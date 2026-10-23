@@ -9,7 +9,7 @@ import { randomUUID } from "expo-crypto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
 import type { Session } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { supabase, startNativeAuthListener } from "../lib/supabase";
 import {
   emptySnapshot,
   localDate,
@@ -19,7 +19,27 @@ import {
   type EventDraft,
   type Message,
 } from "../lib/types";
+import { normalizePlan, type Plan } from "../lib/plan";
 const uid = randomUUID;
+function normalizeSnapshot(raw: Partial<Snapshot> | null): Snapshot {
+  const empty = emptySnapshot();
+  if (!raw || typeof raw !== "object") return empty;
+  return {
+    ...empty,
+    ...raw,
+    profile: { ...empty.profile, ...raw.profile },
+    goals: Array.isArray(raw.goals) ? raw.goals : [],
+    completions: Array.isArray(raw.completions) ? raw.completions : [],
+    events: Array.isArray(raw.events) ? raw.events : [],
+    memories: Array.isArray(raw.memories) ? raw.memories : [],
+    messages: Array.isArray(raw.messages) ? raw.messages : [],
+    voiceSessions: Array.isArray(raw.voiceSessions) ? raw.voiceSessions : [],
+  };
+}
+function missingTable(error: { code?: string } | null) {
+  return error?.code === "PGRST205" || error?.code === "42P01";
+}
+
 type Actions = {
   data: Snapshot;
   loading: boolean;
@@ -32,6 +52,7 @@ type Actions = {
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   saveProfile: (p: Profile) => Promise<void>;
+  savePlan: (p: Plan) => Promise<void>;
   send: (text: string) => Promise<void>;
   addGoal: (
     g: Pick<Goal, "title" | "steps" | "schedule">,
@@ -54,39 +75,95 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<Snapshot>(emptySnapshot);
   const [demo, setDemo] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(Boolean(supabase));
+  const [dataLoading, setDataLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const loading = authLoading || dataLoading || demoLoading;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const scope = useRef(0);
-  const lock = useRef(false);
+  const lock = useRef<symbol | null>(null);
+  const refreshCount = useRef(0);
+  const sessionRef = useRef<Session | null>(null);
+  const demoRef = useRef(false);
+  // Actions retained by an open conversation must never move into another account.
+  const actionScope = scope.current;
+  function assertActiveScope() {
+    if (
+      actionScope !== scope.current ||
+      demo !== demoRef.current ||
+      session?.user.id !== sessionRef.current?.user.id
+    )
+      throw new Error("Your sign-in changed. Please try again.");
+    if (!demo && (!supabase || !sessionRef.current))
+      throw new Error("Please sign in first.");
+    return sessionRef.current;
+  }
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) setError(error.message);
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
-      scope.current++;
-      setSession(s);
-      if (!s) setData(emptySnapshot());
-    });
+    if (!supabase) return;
+    let mounted = true;
+    let authEventSeen = false;
+    const acceptSession = (next: Session | null) => {
+      if (!mounted) return;
+      if (sessionRef.current?.user.id !== next?.user.id) {
+        // An email callback should enter the signed-in account even from the demo.
+        if (demoRef.current && next) {
+          demoRef.current = false;
+          setDemo(false);
+          setDemoLoading(false);
+        }
+        if (!demoRef.current) {
+          scope.current++;
+          lock.current = null;
+          setBusy(false);
+          setData(emptySnapshot());
+          setDataLoading(Boolean(next));
+          setError("");
+        }
+      }
+      sessionRef.current = next;
+      setSession(next);
+    };
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, next) => {
+        authEventSeen = true;
+        acceptSession(next);
+      },
+    );
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (authEventSeen) return;
+        if (error) throw error;
+        acceptSession(data.session);
+      })
+      .catch(() => {
+        if (mounted && !authEventSeen)
+          setError("Your sign-in could not be restored. Please sign in again.");
+      })
+      .finally(() => {
+        if (mounted) setAuthLoading(false);
+      });
     const sub = AppState.addEventListener("change", (state) =>
       state === "active"
         ? supabase!.auth.startAutoRefresh()
         : supabase!.auth.stopAutoRefresh(),
     );
+    const stopNative = startNativeAuthListener((message) => {
+      if (mounted) setError(message);
+    });
     return () => {
+      mounted = false;
       listener.subscription.unsubscribe();
       sub.remove();
+      stopNative();
     };
   }, []);
   async function refresh() {
-    if (demo || !session || !supabase) return;
+    const current = sessionRef.current;
+    if (demoRef.current || !current || !supabase) return;
     const version = scope.current;
+    const request = ++refreshCount.current;
     const tables = [
       "profiles",
       "goals",
@@ -94,64 +171,96 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       "events",
       "memories",
       "messages",
+      "voice_sessions",
     ];
     const results = await Promise.all(
-      tables.map((t) =>
+      tables.map((table) =>
         supabase!
-          .from(t)
+          .from(table)
           .select("*")
-          .eq("user_id", session.user.id)
-          .order("created_at", { ascending: t !== "messages" })
-          .limit(t === "messages" ? 100 : 1000),
+          .eq("user_id", current.user.id)
+          .order("created_at", { ascending: false })
+          .limit(
+            table === "messages" ? 100 : table === "voice_sessions" ? 20 : 1000,
+          )
+          .setHeader("Authorization", `Bearer ${current.access_token}`),
       ),
     );
-    for (const r of results) if (r.error) throw r.error;
-    if (version !== scope.current) return;
-    const profile = results[0]!.data?.[0];
-    setData({
-      profile: profile
-        ? { ...emptySnapshot().profile, ...profile }
-        : emptySnapshot().profile,
-      goals: results[1]!.data ?? [],
-      completions: results[2]!.data ?? [],
-      events: results[3]!.data ?? [],
-      memories: results[4]!.data ?? [],
-      messages: (results[5]!.data ?? []).reverse(),
-    } as Snapshot);
+    // Discard both data and errors from requests belonging to a previous account.
+    if (
+      version !== scope.current ||
+      request !== refreshCount.current ||
+      demoRef.current
+    )
+      return;
+    for (let i = 0; i < results.length; i++)
+      if (results[i]!.error && !(i === 6 && missingTable(results[i]!.error)))
+        throw results[i]!.error;
+    setData(
+      normalizeSnapshot({
+        profile: results[0]!.data?.[0],
+        goals: results[1]!.data ?? [],
+        completions: results[2]!.data ?? [],
+        events: results[3]!.data ?? [],
+        memories: results[4]!.data ?? [],
+        messages: (results[5]!.data ?? []).reverse(),
+        voiceSessions: results[6]!.data ?? [],
+      } as Partial<Snapshot>),
+    );
   }
   useEffect(() => {
-    if (session && !demo) {
-      setLoading(true);
-      refresh()
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false));
+    if (!session || demo) {
+      setDataLoading(false);
+      return;
     }
+    let active = true;
+    setDataLoading(true);
+    refresh()
+      .catch((error) => {
+        if (active)
+          setError(error?.message ?? "Your information could not be loaded.");
+      })
+      .finally(() => {
+        if (active) setDataLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [session?.user.id, demo]);
   useEffect(() => {
-    if (demo && !loading)
-      AsyncStorage.setItem("kindred-demo", JSON.stringify(data)).catch(() =>
-        setError("Could not save the local demo."),
-      );
+    if (!demo || loading) return;
+    const version = scope.current;
+    AsyncStorage.setItem("kindred-demo", JSON.stringify(data)).catch(() => {
+      if (version === scope.current && demoRef.current)
+        setError("Could not save the local demo.");
+    });
   }, [data, demo, loading]);
   async function run(fn: () => Promise<void>) {
+    assertActiveScope();
     if (lock.current)
       throw new Error("Please wait for the current action to finish.");
-    lock.current = true;
+    const operation = Symbol("companion-action");
+    lock.current = operation;
+    const version = scope.current;
     setBusy(true);
     setError("");
     try {
       await fn();
-    } catch (e) {
+    } catch (error) {
       const message =
-        e instanceof Error
-          ? e.message
-          : ((e as { message?: string }).message ??
-            "Something went wrong. Please try again.");
-      setError(message);
+        error &&
+        typeof error === "object" &&
+        "message" in error &&
+        typeof error.message === "string"
+          ? error.message
+          : "Something went wrong. Please try again.";
+      if (version === scope.current) setError(message);
       throw new Error(message);
     } finally {
-      lock.current = false;
-      setBusy(false);
+      if (lock.current === operation) {
+        lock.current = null;
+        setBusy(false);
+      }
     }
   }
   async function write(
@@ -160,29 +269,34 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     value: object,
     id?: string,
   ) {
-    if (!supabase || !session) throw new Error("Please sign in first.");
+    const current = assertActiveScope();
+    if (!supabase || !current) throw new Error("Please sign in first.");
     let query;
     if (op === "insert")
       query = supabase
         .from(table)
-        .insert({ ...value, user_id: session.user.id });
+        .insert({ ...value, user_id: current.user.id });
     else if (op === "upsert")
       query = supabase
         .from(table)
-        .upsert({ ...value, user_id: session.user.id });
+        .upsert({ ...value, user_id: current.user.id });
     else if (op === "update")
       query = supabase
         .from(table)
         .update(value)
         .eq("id", id!)
-        .eq("user_id", session.user.id);
+        .eq("user_id", current.user.id);
     else
       query = supabase
         .from(table)
         .delete()
         .eq("id", id!)
-        .eq("user_id", session.user.id);
-    const { error } = await query;
+        .eq("user_id", current.user.id);
+    const { error } = await query.setHeader(
+      "Authorization",
+      `Bearer ${current.access_token}`,
+    );
+    assertActiveScope();
     if (error) throw error;
     await refresh();
   }
@@ -195,42 +309,126 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     error,
     clearError: () => setError(""),
     enterDemo: () => {
-      setLoading(true);
-      scope.current++;
+      if (lock.current || demoRef.current) return;
+      const version = ++scope.current;
+      demoRef.current = true;
+      setDemo(true);
+      setData(emptySnapshot());
+      setDemoLoading(true);
+      setError("");
       AsyncStorage.getItem("kindred-demo")
         .then((raw) => {
-          setData(raw ? JSON.parse(raw) : emptySnapshot());
-          setDemo(true);
+          if (version === scope.current && demoRef.current)
+            setData(raw ? normalizeSnapshot(JSON.parse(raw)) : emptySnapshot());
         })
         .catch(() => {
-          setData(emptySnapshot());
-          setDemo(true);
+          if (version === scope.current && demoRef.current)
+            setData(emptySnapshot());
         })
-        .finally(() => setLoading(false));
+        .finally(() => {
+          if (version === scope.current) setDemoLoading(false);
+        });
     },
-    signOut: async () => {
-      scope.current++;
-      if (!demo) {
-        const token = await AsyncStorage.getItem("kindred-device-token");
-        if (token && session) {
-          const { error } = await supabase!
-            .from("devices")
-            .delete()
-            .eq("user_id", session.user.id)
-            .eq("token", token);
-          if (error) throw error;
-          await AsyncStorage.removeItem("kindred-device-token");
+    signOut: () =>
+      run(async () => {
+        if (!demo) {
+          const current = assertActiveScope()!;
+          const token = await AsyncStorage.getItem("kindred-device-token");
+          assertActiveScope();
+          if (token) {
+            const { error } = await supabase!
+              .from("devices")
+              .delete()
+              .eq("user_id", current.user.id)
+              .eq("token", token)
+              .setHeader("Authorization", `Bearer ${current.access_token}`);
+            assertActiveScope();
+            if (error)
+              throw new Error(
+                "Could not disconnect this device. Please try signing out again.",
+              );
+            await AsyncStorage.removeItem("kindred-device-token");
+            assertActiveScope();
+          }
+          const result = await supabase!.auth.signOut();
+          if (result.error) throw result.error;
+          sessionRef.current = null;
+          setSession(null);
         }
-        await supabase?.auth.signOut();
-      }
-      setDemo(false);
-      setData(emptySnapshot());
-    },
+        scope.current++;
+        demoRef.current = false;
+        setDemo(false);
+        setDemoLoading(false);
+        setDataLoading(Boolean(sessionRef.current));
+        setData(emptySnapshot());
+        setError("");
+      }),
     refresh,
     saveProfile: (p) =>
       run(async () => {
         if (demo) setData((d) => ({ ...d, profile: p }));
         else await write("profiles", "upsert", p);
+      }),
+    savePlan: (input) =>
+      run(async () => {
+        const plan = normalizePlan(input);
+        if (demo) {
+          setData((d) => {
+            const chosen = plan.goals.map((title) => {
+              const existing = d.goals.find(
+                (g) => g.title.trim().toLowerCase() === title.toLowerCase(),
+              );
+              return existing
+                ? { ...existing, title, status: "active" as const }
+                : {
+                    id: uid(),
+                    user_id: "demo",
+                    title,
+                    steps: [],
+                    schedule: { kind: "daily" as const, days: [] },
+                    status: "active" as const,
+                    created_at: new Date().toISOString(),
+                  };
+            });
+            const retained = new Set(chosen.map((g) => g.id));
+            return {
+              ...d,
+              profile: {
+                ...d.profile,
+                display_name: d.profile.display_name || "friend",
+                onboarded: true,
+                checkin_time: plan.checkin_time,
+                checkin_days: plan.checkin_days,
+                timezone: plan.timezone,
+              },
+              goals: [
+                ...chosen,
+                ...d.goals
+                  .filter((g) => !retained.has(g.id))
+                  .map((g) => ({ ...g, status: "paused" as const })),
+              ],
+            };
+          });
+          return;
+        }
+        const current = assertActiveScope()!;
+        const { error } = await supabase!
+          .rpc("save_companion_plan", {
+            p_goals: plan.goals,
+            p_checkin_time: plan.checkin_time,
+            p_checkin_days: plan.checkin_days,
+            p_timezone: plan.timezone,
+          })
+          .setHeader("Authorization", `Bearer ${current.access_token}`);
+        assertActiveScope();
+        if (error) {
+          if (error.code === "PGRST202")
+            throw new Error(
+              "The new plan setup is still being connected. Please try again shortly.",
+            );
+          throw error;
+        }
+        await refresh();
       }),
     addGoal: (g, source) =>
       run(async () => {
@@ -242,6 +440,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
               ...d.goals,
               {
                 ...g,
+                source_message_id: source ?? null,
                 id: uid(),
                 user_id: "demo",
                 status: "active",
@@ -310,7 +509,12 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
             ...d,
             events: [
               ...d.events,
-              { ...event, id: uid(), created_at: new Date().toISOString() },
+              {
+                ...event,
+                source_message_id: source ?? null,
+                id: uid(),
+                created_at: new Date().toISOString(),
+              },
             ],
           }));
         else
@@ -355,14 +559,25 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       }),
     clearHistory: () =>
       run(async () => {
-        if (demo) setData((d) => ({ ...d, messages: [] }));
+        if (demo) setData((d) => ({ ...d, messages: [], voiceSessions: [] }));
         else {
+          const current = assertActiveScope()!;
           const { error } = await supabase!
             .from("messages")
             .delete()
-            .eq("user_id", session!.user.id);
+            .eq("user_id", current.user.id)
+            .setHeader("Authorization", `Bearer ${current.access_token}`);
+          assertActiveScope();
           if (error) throw error;
+          const voiceResult = await supabase!
+            .from("voice_sessions")
+            .delete()
+            .eq("user_id", current.user.id)
+            .setHeader("Authorization", `Bearer ${current.access_token}`);
+          assertActiveScope();
           await refresh();
+          if (voiceResult.error && !missingTable(voiceResult.error))
+            throw voiceResult.error;
         }
       }),
     send: (text) =>
@@ -407,9 +622,12 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
           setData((d) => ({ ...d, messages: [...d.messages, user, reply] }));
           return;
         }
+        const current = assertActiveScope()!;
         const { error } = await supabase!.functions.invoke("chat", {
+          headers: { Authorization: `Bearer ${current.access_token}` },
           body: { text, request_id: uid() },
         });
+        assertActiveScope();
         if (error)
           throw new Error(
             "The companion could not respond. Check your connection and backend setup, then try again.",

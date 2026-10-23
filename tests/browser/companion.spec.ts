@@ -1,68 +1,141 @@
 import { test, expect } from "@playwright/test";
-test("mobile demo persists goals, confirmations, preferences and corrected memories", async ({
+
+test("simple mobile plan persists, voice stays manual, and text activities still need confirmation", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await page.getByRole("button", { name: "Explore the local demo" }).click();
-  await page.getByLabel("What should I call you?").fill("Dwayne");
-  await page.getByRole("button", { name: "Let’s begin" }).click();
-  await page.getByRole("button", { name: "＋ Goal" }).click();
-  await page.getByLabel("Goal", { exact: true }).fill("Read ten minutes");
-  await page.getByRole("button", { name: "Save goal", exact: true }).click();
-  await page.getByRole("button", { name: "Mark today complete" }).click();
-  await expect(page.getByText("1 of 1 planned steps today")).toBeVisible();
-  await page.getByRole("tab", { name: "Chat", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "Just three little things." }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Your goals", { exact: true })
+    .fill("Read ten minutes\nWalk outside");
+  await page.getByLabel("Your check-in time").fill("7:30 PM");
+  await page.getByRole("radio", { name: "Three times a week" }).click();
+  await page.getByRole("button", { name: "That sounds good" }).click();
+  await expect(
+    page.getByRole("button", { name: "Let’s talk", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Open Kindred when you’re free.")).toBeVisible();
+  await page.getByRole("button", { name: "Let’s talk", exact: true }).click();
+  await expect(
+    page.getByText(/your microphone hasn’t been opened/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Type instead" }).click();
   await page.getByLabel("Message Kindred").fill("Plan a walk");
   await page.getByRole("button", { name: "Send message" }).click();
-  await expect(
-    page.getByText("Kindred · sample reply", { exact: true }),
-  ).toBeVisible();
-  await page.getByRole("tab", { name: "Calendar", exact: true }).click();
-  await expect(
-    page.getByText("A little time outside", { exact: true }),
-  ).toHaveCount(0);
-  await page.getByRole("tab", { name: "Chat", exact: true }).click();
+  await expect(page.getByText("Local demo · sample replies")).toBeVisible();
+  await page.getByRole("button", { name: "Review suggested activity" }).click();
   await page.getByRole("button", { name: "Confirm & save event" }).click();
-  await page.getByRole("tab", { name: "Calendar", exact: true }).click();
+  await page.getByRole("button", { name: "Memory and account" }).click();
+  await page.getByRole("button", { name: "Your saved activities" }).click();
   await expect(
     page.getByText("A little time outside", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Your space", exact: true }).click();
-  await page
-    .getByLabel("Something you’d like remembered")
-    .fill("I enjoy evening walks.");
-  await page
-    .getByRole("button", { name: "Remember this", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Back to talking" }).click();
+  await page.getByRole("button", { name: "My plan", exact: true }).click();
+  await expect(page.getByLabel("Your goals", { exact: true })).toHaveValue(
+    "Read ten minutes\nWalk outside",
+  );
+  await expect(page.getByLabel("Your check-in time")).toHaveValue("7:30 PM");
   await expect(
-    page.getByText("I enjoy evening walks.", { exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Correct", exact: true }).click();
-  await page.getByLabel("Correct this memory").fill("I prefer morning walks.");
-  await page.getByRole("button", { name: "Save correction" }).click();
-  await expect(
-    page.getByText("I prefer morning walks.", { exact: true }),
-  ).toBeVisible();
+    page.getByRole("radio", { name: "Three times a week" }),
+  ).toBeChecked();
   await page.reload();
   await page.getByRole("button", { name: "Explore the local demo" }).click();
+  await page.getByRole("button", { name: "My plan", exact: true }).click();
+  await expect(page.getByLabel("Your goals", { exact: true })).toHaveValue(
+    "Read ten minutes\nWalk outside",
+  );
+  await page
+    .getByRole("button", { name: "Memory and account", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Clear conversation history", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm: clear conversation history" })
+    .click();
   await expect(
-    page.getByText("Read ten minutes", { exact: true }),
+    page.getByText("Your conversation history has been cleared."),
   ).toBeVisible();
-  await page.getByRole("tab", { name: "Your space", exact: true }).click();
+  await page.getByRole("button", { name: "Back to talking" }).click();
+  await page.getByRole("button", { name: "Type instead" }).click();
   await expect(
-    page.getByText("I prefer morning walks.", { exact: true }),
+    page.getByRole("heading", { name: "A little space to talk." }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Forget", exact: true }).click();
-  await expect(page.getByText("No saved memories yet.")).toBeVisible();
   expect(errors).toEqual([]);
 });
-test("desktop layout stays within viewport", async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 800 });
+
+test("signup clearly explains email confirmation and uses this site's return URL", async ({
+  page,
+}) => {
+  let redirect = "";
+  await page.route("**/auth/v1/signup**", async (route) => {
+    redirect =
+      new URL(route.request().url()).searchParams.get("redirect_to") || "";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "d773cd36-e843-4eb5-b7c5-721c8283d721",
+        email: "sample@example.com",
+        identities: [],
+        created_at: new Date().toISOString(),
+      }),
+    });
+  });
   await page.goto("/");
+  await page
+    .getByRole("button", { name: "New here? Create an account" })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Explore the local demo" }),
+    page.getByText(/we’ll send you a link before you can sign in/),
+  ).toBeVisible();
+  await page.getByLabel("Email", { exact: true }).fill("sample@example.com");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("sample-password-123");
+  await page
+    .getByRole("button", { name: "Create account", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Check your email." }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Open the confirmation email for sample@example.com/),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Resend available in/ }),
+  ).toBeDisabled();
+  expect(redirect).toBe("http://127.0.0.1:8081/");
+});
+
+test("expired email link has a clear recovery screen", async ({ page }) => {
+  await page.goto(
+    "/#error=access_denied&error_code=otp_expired&error_description=Email+link+expired",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Check your email." }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText(
+    /expired|already been used/,
+  );
+  await expect(
+    page.getByRole("button", { name: "Resend confirmation email" }),
+  ).toBeVisible();
+});
+
+test("desktop voice screen stays within viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Explore the local demo" }).click();
+  await page.getByRole("button", { name: "Set up my plan by voice" }).click();
+  await expect(
+    page.getByRole("button", { name: "Let’s talk", exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(

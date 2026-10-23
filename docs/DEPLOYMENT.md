@@ -1,20 +1,23 @@
-# Connect the MVP
+# Connect Kindred
+
+If your original app is already connected, use the smaller [voice update guide](VOICE.md) instead of repeating setup. The current interface uses manual check-in times; push infrastructure below is optional.
 
 ## 1. Supabase
 
-Create a Supabase project. In its SQL editor run `supabase/migrations/202610200001_initial.sql`, or use the Supabase CLI:
+Create a Supabase project. In its SQL editor run all files in `supabase/migrations/` in filename order, or use the Supabase CLI:
 
 ```sh
 supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 supabase functions deploy chat
+supabase functions deploy voice-session
 supabase functions deploy dispatch-reminders
 ```
 
-The checked-in `supabase/config.toml` disables gateway JWT verification for these two functions. This is intentional: `chat` verifies the user token with `auth.getUser`; the reminder endpoint accepts only a separate worker secret. Do not remove those checks. Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions automatically.
+The checked-in `supabase/config.toml` disables gateway JWT verification for these functions. This is intentional: `chat` and `voice-session` verify the user token with `auth.getUser`; the reminder endpoint accepts only a separate worker secret. Do not remove those checks. Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions automatically.
 
-In Supabase Auth enable email/password signup and configure the Site URL, email templates and allowed redirect URLs for your deployment. The MVP uses email confirmation followed by returning to the app to sign in; it does not require a magic-link callback. Use a strong password (UI requires at least 8 characters). Password reset, account deletion, export and production abuse controls are release follow-ups.
+In Supabase Auth enable email/password signup and configure the Site URL, email templates and allowed redirect URLs for your deployment. Signup explains email confirmation and supplies the current website origin as the return URL (or `kindred://auth` on native). Allowlist the deployed URL and native scheme in Supabase; an already-expired link cannot be repaired by the app. A valid confirmation callback can establish the session; otherwise users can sign in with their password. Use a strong password (UI requires at least 8 characters). Password reset, account deletion, export and production abuse controls are release follow-ups.
 
 Create `.env` from `.env.example`:
 
@@ -41,9 +44,9 @@ Never paste credentials into chat or commit `.env`. No OpenAI secret belongs in 
 
 Create an Expo/EAS project, set real unique iOS bundle and Android package identifiers in `app.json`, and configure APNs and FCM v1 credentials with EAS. The checked-in identifiers are placeholders to replace before distribution. Build an iOS/Android **development build** with `eas build --profile development --platform ios` or `android`, install it on a physical device, and start Metro with `npx expo start --dev-client`. `expo-dev-client` is already installed. Push is not validated in a web browser or Expo Go.
 
-In the app's Your space tab, enable notifications on that device. Grant OS permission, then save check-in time, quiet hours, timezone and daily cap. Device registration assigns a token to the signed-in user; sign-out unregisters that installation. Daily check-ins are opt-in; event reminders are explicitly requested by confirming an event; post-activity check-ins are separately opt-in.
+The simplified release does not expose device push registration; it shows a time to open the app manually. Existing registered native installations retain their backend reminder settings. Before reintroducing the optional permission flow, validate the existing `src/lib/notifications.ts` registration helper, quiet hours and daily caps on physical devices. Sign-out unregisters that installation. Daily and post-activity check-ins remain opt-in.
 
-The dispatcher sends generic notification text so goals and conversation contents do not appear on a lock screen. Tapping a notification opens Chat; it never auto-starts a microphone or voice call.
+The dispatcher sends generic notification text so goals and conversation contents do not appear on a lock screen. Tapping a notification opens Talk; it never auto-starts a microphone or voice call.
 
 ## 4. Schedule the worker
 
@@ -56,9 +59,9 @@ Jobs are claimed atomically with per-profile locks. Failed/ambiguous deliveries 
 ## 5. Required live checks
 
 1. Sign up two accounts, confirm emails, sign in, and complete onboarding. Verify each sees only their own goals, chat, events and memories.
-2. Ask for a daily goal, edit and save the card, complete it, pause it, then resume. Reload to verify persistence.
+2. Save a simple plan, change the time/frequency, then reload to verify persistence. Change its goals and verify removed goals are paused while existing progress is retained. Follow the live voice checks in [VOICE.md](VOICE.md).
 3. Ask to schedule a future activity with a date/time and timezone. Verify no event exists before confirmation. Edit its time, confirm, and inspect the calendar and queued notification jobs.
-4. Enable a physical device, set a near-future reminder outside quiet hours, and invoke the worker through cron. Verify actual device delivery and tapping into Chat. Test foreground, background, denied permission and signed-out behavior on both platforms.
+4. For an already-registered physical device, set a near-future reminder outside quiet hours and invoke the optional worker through cron. Verify actual delivery and tapping into Talk without opening the microphone. Test foreground, background and signed-out behavior on both platforms.
 5. Set a zero cap and quiet hours spanning midnight; verify no delivery. Delete a scheduled event before it is due; verify jobs disappear. A cancellation racing an in-flight external request cannot recall an already accepted push.
 6. Approve a memory, correct it, ask about it, forget it and clear history. Verify deleted information is no longer sent in future requests. This does not erase requests already processed by the AI provider.
 

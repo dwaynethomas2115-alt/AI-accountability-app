@@ -2,13 +2,16 @@
   "expo": {
     "name": "Kindred",
     "slug": "ai-accountability-companion",
-    "version": "1.0.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kindred.accountability"
+      "bundleIdentifier": "com.kindred.accountability",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Kindred uses your microphone only when you start a voice conversation."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +21,11 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.kindred.accountability"
+      "package": "com.kindred.accountability",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -26,7 +33,14 @@
     "scheme": "kindred",
     "plugins": [
       "expo-notifications",
-      "expo-secure-store"
+      "expo-secure-store",
+      "./src/lib/voice/withAudioOnlyWebRTC.js",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "microphonePermission": "Kindred uses your microphone only when you start a voice conversation."
+        }
+      ]
     ]
   }
 }

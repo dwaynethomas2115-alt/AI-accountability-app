@@ -7,3 +7,7 @@ verify_jwt = false
 [functions.dispatch-reminders]
 # This endpoint validates a separate high-entropy server-only scheduler secret.
 verify_jwt = false
+
+[functions.voice-session]
+# The function verifies the signed-in user before issuing a short-lived voice credential.
+verify_jwt = false

@@ -51,6 +51,7 @@ export function GoalEditor({
                 accessibilityRole="checkbox"
                 accessibilityLabel={d}
                 accessibilityState={{ checked: days.includes(i) }}
+                aria-checked={days.includes(i)}
                 onPress={() =>
                   setDays(
                     kind === "weekly"

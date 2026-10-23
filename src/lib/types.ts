@@ -2,6 +2,7 @@ export type Schedule = { kind: "daily" | "weekly" | "custom"; days: number[] };
 export type Goal = {
   id: string;
   user_id: string;
+  source_message_id?: string | null;
   title: string;
   steps: string[];
   schedule: Schedule;
@@ -17,7 +18,11 @@ export type EventDraft = {
   reminder_minutes: number;
   post_checkin: boolean;
 };
-export type CalendarEvent = EventDraft & { id: string; created_at: string };
+export type CalendarEvent = EventDraft & {
+  id: string;
+  created_at: string;
+  source_message_id?: string | null;
+};
 export type Memory = { id: string; content: string; created_at: string };
 export type Proposal = {
   goal: { title: string; steps: string[]; schedule: Schedule } | null;
@@ -37,9 +42,16 @@ export type Profile = {
   onboarded: boolean;
   checkins_enabled: boolean;
   checkin_time: string;
+  checkin_days: number[];
   quiet_start: string;
   quiet_end: string;
   daily_limit: number;
+};
+export type VoiceHistory = {
+  id: string;
+  created_at: string;
+  ended_at: string | null;
+  transcript: { role: "user" | "assistant"; content: string }[];
 };
 export type Snapshot = {
   profile: Profile;
@@ -48,6 +60,7 @@ export type Snapshot = {
   events: CalendarEvent[];
   memories: Memory[];
   messages: Message[];
+  voiceSessions: VoiceHistory[];
 };
 export const timezone = () =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -57,6 +70,7 @@ export const defaultProfile = (): Profile => ({
   onboarded: false,
   checkins_enabled: false,
   checkin_time: "18:00",
+  checkin_days: [0, 1, 2, 3, 4, 5, 6],
   quiet_start: "21:00",
   quiet_end: "08:00",
   daily_limit: 2,
@@ -68,6 +82,7 @@ export const emptySnapshot = (): Snapshot => ({
   events: [],
   memories: [],
   messages: [],
+  voiceSessions: [],
 });
 export function localDate(date = new Date(), zone = timezone()) {
   return new Intl.DateTimeFormat("en-CA", {
