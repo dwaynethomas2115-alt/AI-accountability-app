@@ -1,0 +1,52 @@
+{
+  "name": "ai-accountability-companion",
+  "description": "A gentle companion for the promises you make to yourself.",
+  "license": "0BSD",
+  "version": "0.1.0",
+  "main": "index.ts",
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "^2.118.0",
+    "expo": "~58.0.16",
+    "expo-crypto": "~58.0.7",
+    "expo-dev-client": "~58.0.14",
+    "expo-notifications": "~58.1.5",
+    "expo-secure-store": "~58.0.2",
+    "expo-status-bar": "~58.0.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-url-polyfill": "^4.0.0",
+    "react-native-web": "~0.21.4",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.10",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "@types/react": "~19.3.0",
+    "deno": "^2.9.6",
+    "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "build:web": "EXPO_NO_TELEMETRY=1 expo export --platform web",
+    "check:backend": "deno check --config supabase/functions/deno.json supabase/functions/chat/index.ts supabase/functions/dispatch-reminders/index.ts",
+    "test:e2e": "playwright test",
+    "format": "prettier --write App.tsx src tests playwright.config.ts supabase/functions docs README.md",
+    "build:all": "EXPO_NO_TELEMETRY=1 expo export --platform all",
+    "build:vercel": "node scripts/check-web-env.mjs && npm run build:web"
+  },
+  "private": true,
+  "engines": {
+    "node": "^22.13.0 || ^24.3.0 || >=26.0.0"
+  }
+}

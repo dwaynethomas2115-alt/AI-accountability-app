@@ -1,0 +1,9 @@
+project_id = "kindred"
+
+[functions.chat]
+# JWT is verified with auth.getUser inside the function (supports modern signing keys).
+verify_jwt = false
+
+[functions.dispatch-reminders]
+# This endpoint validates a separate high-entropy server-only scheduler secret.
+verify_jwt = false

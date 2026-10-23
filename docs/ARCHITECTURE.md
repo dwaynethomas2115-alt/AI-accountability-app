@@ -1,0 +1,23 @@
+# Architecture and next milestone
+
+## Data and API boundaries
+
+The Expo app reads and writes only user-owned application records through the Supabase public client and an authenticated JWT. PostgreSQL RLS enforces ownership, including completion-to-goal ownership and proposal source ownership. Server-generated messages are client-readable and deletable, not client-insertable. The service-role key exists only in Supabase functions. Native session persistence uses SecureStore; the browser uses sessionStorage. Demo state uses a separate local storage key and never falls back silently when a real backend request fails.
+
+`POST /functions/v1/chat` accepts `{text, request_id}` with a valid user bearer token. It verifies the token, claims an idempotent rate-limit slot (8/minute and 150/day), reads bounded context, invokes OpenAI Structured Outputs, validates the result with Zod and persists the user/assistant pair atomically. It writes no goals, events or memories. The response is `{ok:true}`; the app refetches its RLS-filtered data. Repeated request IDs return 409; provider failures return 502, leaving no partial conversation pair. Claimed failure attempts still count toward cost/abuse limits.
+
+Assistant proposals are editable drafts. Confirming a card writes an ordinary user-owned goal/event. A unique `(user_id, source_message_id)` prevents repeated saves of the same proposal after reload. On manual event creation, the null source is allowed. Each persisted event triggers queue creation inside the same transaction. This internal event schema is the source of truth for future calendar adapters; AI must never write external calendars directly. Memory proposals require separate user approval. Deleting chat history preserves confirmed events/goals but removes their source link.
+
+`POST /functions/v1/dispatch-reminders` requires the scheduler's bearer secret, not a user JWT. It atomically claims due jobs, respecting per-user timezone, quiet hours and daily cap, then sends generic Expo pushes. The browser/native client does not schedule background jobs. Production improvements include Expo receipt polling, delivery monitoring, notification preference rechecks at send time, backoff with explicit duplicate-risk policy, push token limits, queue fairness at scale and rotating scheduler secrets. Clients never see job internals through RLS.
+
+Retention is currently explicit user deletion for memories, goals, events and messages. No hidden summary is retained: the MVP uses bounded chat history plus approved memory records, not embeddings or automatically generated long-term summaries. Add a consented summary pipeline with provenance, deletion propagation and inspectable entries before expanding long-term memory. Account deletion/export and retention automation are needed before public release.
+
+## Realtime voice milestone (after credentialed MVP acceptance)
+
+1. Add an authenticated `voice-session` Edge Function that verifies the same user identity, enforces quotas, and mints a short-lived OpenAI Realtime client credential. The long-lived key stays server-side. Reuse the text companion instructions and bounded memory context.
+2. Use a maintained native WebRTC transport in an Expo development build. Validate the current OpenAI Realtime session API and supported audio model at implementation time. Request microphone permission only after the user taps Start conversation. Show a persistent live mic indicator and accessible mute/end controls. Stop tracks and end the session when leaving the call or signing out.
+3. Route realtime tool proposals through the same validated goal/event/memory contracts and editable confirmation cards. Require explicit user approval before any save. Persist transcript segments with stable session IDs; never infer consent from speech activity. Provide a text fallback on denied permission or connection loss.
+4. Design interruption, reconnect, audio route changes, background transitions, latency, echo cancellation and accessibility. Do not start a live mic from a push notification. Explain audio/transcript processing and avoid storing raw audio by default.
+5. Test with real devices on iOS and Android, headphones, speakerphone, unstable mobile networks, interruptions and quiet-hour notifications. Measure latency and usage costs, then run a user-consented pilot.
+
+Google Calendar and Apple Calendar should be adapters with explicit permission scopes, provider event IDs, timezone preservation, idempotent sync and revocation. Keep internal confirmation the only entry point. Optional telephone calls remain a separate later integration with explicit consent, quiet-hour enforcement and opt-out. Billing and real calling are outside this milestone.
