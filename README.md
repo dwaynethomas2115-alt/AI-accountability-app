@@ -16,6 +16,10 @@ Use Node 24.19 (see `.nvmrc`). Expo SDK 58. Copy `.env.example` to `.env` and fo
 
 ## The simple experience
 
+- A floating garden begins with grass. Each goal owns a flower or tree that grows after 1, 3, 7 and 14 completed days. Paused goals and missed days keep earned growth.
+- Tap the daily progress circle to mark scheduled goals complete or correct today’s entry. The circle resets daily; lifetime garden growth is calculated from saved completions.
+- **Preview garden growth** shows five sample stages without writing progress or changing the account. **Back to my garden** restores the real view.
+
 - Setup asks only for goals, a convenient time, and check-in frequency. Users can also describe the plan by voice.
 - **Let’s talk** starts an actual two-way Realtime audio conversation anytime. Voice supports interruption, live captions, mute and end. Microphone access starts only after the user presses the button, and stops on end, backgrounding, sign-out or navigation.
 - Spoken plan changes are shown for review and require a later explicit confirmation or a Save press. Saving preserves progress and pauses goals removed from the plan.
@@ -31,6 +35,8 @@ The voice backend needs a one-time Supabase update: **[activate voice](docs/VOIC
 ```text
 App.tsx                         Simple navigation, auth shell, voice lifecycle
 src/screens/                    Talk, plan, messages, account, auth and saved calendar
+src/components/garden/          Floating garden illustration, goal actions and preview
+src/lib/garden.ts               Stable goal plants and timezone-aware growth rules
 src/hooks/useVoiceConversation.ts  React binding for the voice session controller
 src/lib/voice/                  Browser/native WebRTC, session events and confirmation
 src/state/CompanionProvider.tsx  User-owned data actions and separate persistent demo

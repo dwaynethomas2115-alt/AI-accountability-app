@@ -9,7 +9,7 @@ import {
   ArrowUpRight,
 } from "lucide-react-native";
 import { colors, s, Button } from "../components/ui";
-import { VoiceOrb } from "../components/VoiceOrb";
+import { GardenHome } from "../components/garden/GardenHome";
 import { useCompanion } from "../state/CompanionProvider";
 import { nextCheckin, formatCheckinTime } from "../lib/plan";
 import type { useVoiceConversation } from "../hooks/useVoiceConversation";
@@ -60,135 +60,105 @@ export function TalkScreen({
   const seconds = voice.elapsedSeconds % 60;
   return (
     <View style={styles.page}>
-      <View style={styles.intro}>
-        <Text style={s.eyebrow}>
-          {voice.active
-            ? "Right here with you"
-            : ended
-              ? "A moment well spent"
-              : "Your daily breathing room"}
-        </Text>
-        <Text accessibilityRole="header" style={styles.title}>
-          {voice.active
-            ? "Just you and Kindred."
-            : ended
-              ? "Good to talk."
-              : !p.onboarded
-                ? "Let’s get to know you."
-                : "A little time,\njust for you."}
-        </Text>
-        <Text style={styles.subtitle}>
-          {voice.active
-            ? "Take your time. There’s no right thing to say."
-            : ended
-              ? "Small steps. Fresh starts. I’m here for all of it."
-              : "Talk about your goals, your day, or whatever’s on your mind."}
-        </Text>
-      </View>
-      <View style={styles.orb}>
-        <VoiceOrb
-          active={voice.active}
-          speaking={voice.status === "speaking"}
-          muted={voice.muted}
-        />
-      </View>
-      {voice.active ? (
-        <>
-          <View style={styles.listening}>
-            <View
-              style={[
-                styles.dot,
-                voice.muted && { backgroundColor: "#8C978A" },
-              ]}
-            />
-            <Text accessibilityLiveRegion="polite" style={styles.status}>
-              {label}
-            </Text>
-            <Text style={styles.timer}>
-              {minutes}:{String(seconds).padStart(2, "0")}
-            </Text>
-          </View>
-          <View style={styles.caption}>
-            <Text style={styles.captionRole}>
-              {last?.role === "user" ? "You" : "Kindred"}
-            </Text>
-            <Text
-              accessibilityLiveRegion="polite"
-              style={styles.captionText}
-              numberOfLines={5}
-            >
-              {last?.content || "Say hello when you’re ready."}
-            </Text>
-          </View>
-          <View style={styles.controls}>
+      <GardenHome active={voice.active} onPlan={onPlan}>
+        {voice.active ? (
+          <>
+            <View style={styles.listening}>
+              <View
+                style={[
+                  styles.dot,
+                  voice.muted && { backgroundColor: "#8C978A" },
+                ]}
+              />
+              <Text accessibilityLiveRegion="polite" style={styles.status}>
+                {label}
+              </Text>
+              <Text style={styles.timer}>
+                {minutes}:{String(seconds).padStart(2, "0")}
+              </Text>
+            </View>
+            <View style={styles.caption}>
+              <Text style={styles.captionRole}>
+                {last?.role === "user" ? "You" : "Kindred"}
+              </Text>
+              <Text
+                accessibilityLiveRegion="polite"
+                style={styles.captionText}
+                numberOfLines={5}
+              >
+                {last?.content || "Say hello when you’re ready."}
+              </Text>
+            </View>
+            <View style={styles.controls}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  voice.muted ? "Unmute microphone" : "Mute microphone"
+                }
+                accessibilityState={{ selected: voice.muted }}
+                aria-pressed={voice.muted}
+                onPress={voice.toggleMute}
+                style={[
+                  styles.roundControl,
+                  voice.muted && { backgroundColor: colors.sage },
+                ]}
+              >
+                {voice.muted ? (
+                  <MicOff size={23} color={colors.green} />
+                ) : (
+                  <Mic size={23} color={colors.green} />
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="End conversation"
+                onPress={() => void voice.end()}
+                style={styles.endButton}
+              >
+                <PhoneOff size={21} color="white" />
+                <Text style={styles.endText}>End conversation</Text>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={
-                voice.muted ? "Unmute microphone" : "Mute microphone"
-              }
-              accessibilityState={{ selected: voice.muted }}
-              aria-pressed={voice.muted}
-              onPress={voice.toggleMute}
-              style={[
-                styles.roundControl,
-                voice.muted && { backgroundColor: colors.sage },
+              accessibilityLabel="Let’s talk"
+              disabled={!voice.supported && !c.demo}
+              onPress={() => {
+                if (c.demo) {
+                  setDemoNotice(true);
+                  return;
+                }
+                setDemoNotice(false);
+                void voice.start();
+              }}
+              style={({ pressed }) => [
+                styles.talkButton,
+                pressed && { opacity: 0.85 },
+                !voice.supported && !c.demo && { opacity: 0.5 },
               ]}
             >
-              {voice.muted ? (
-                <MicOff size={23} color={colors.green} />
-              ) : (
-                <Mic size={23} color={colors.green} />
-              )}
+              <Mic size={22} color="white" />
+              <Text style={styles.talkText}>
+                {ended ? "Talk a little more" : "Let’s talk"}
+              </Text>
             </Pressable>
+            <Text style={styles.anytime}>
+              Ready whenever you are. Talk anytime.
+            </Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="End conversation"
-              onPress={() => void voice.end()}
-              style={styles.endButton}
+              onPress={onMessages}
+              style={styles.typeLink}
             >
-              <PhoneOff size={21} color="white" />
-              <Text style={styles.endText}>End conversation</Text>
+              <MessageCircle size={17} color={colors.muted} />
+              <Text style={styles.typeText}>Type instead</Text>
             </Pressable>
-          </View>
-        </>
-      ) : (
-        <>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Let’s talk"
-            disabled={!voice.supported && !c.demo}
-            onPress={() => {
-              if (c.demo) {
-                setDemoNotice(true);
-                return;
-              }
-              setDemoNotice(false);
-              void voice.start();
-            }}
-            style={({ pressed }) => [
-              styles.talkButton,
-              pressed && { opacity: 0.85 },
-              !voice.supported && !c.demo && { opacity: 0.5 },
-            ]}
-          >
-            <Mic size={22} color="white" />
-            <Text style={styles.talkText}>
-              {ended ? "Talk a little more" : "Let’s talk"}
-            </Text>
-          </Pressable>
-          <Text style={styles.anytime}>
-            Ready whenever you are. Talk anytime.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={onMessages}
-            style={styles.typeLink}
-          >
-            <MessageCircle size={17} color={colors.muted} />
-            <Text style={styles.typeText}>Type instead</Text>
-          </Pressable>
-        </>
-      )}
+          </>
+        )}
+      </GardenHome>
       {voice.audioBlocked && (
         <Button
           title="Tap to hear Kindred"
@@ -281,16 +251,6 @@ export function TalkScreen({
               <ArrowUpRight size={19} color={colors.muted} />
             </Pressable>
           )}
-          {goals.length > 0 && (
-            <Text style={styles.goalNote}>
-              Making room for{" "}
-              {goals
-                .slice(0, 2)
-                .map((g) => g.title.charAt(0).toLowerCase() + g.title.slice(1))
-                .join(" & ")}
-              {goals.length > 2 ? "…" : ""}
-            </Text>
-          )}
           <Text style={styles.disclosure}>
             An AI voice, a space to be yourself. Conversations are transcribed
             so Kindred can remember where you left off.
@@ -306,26 +266,9 @@ const styles = StyleSheet.create({
     maxWidth: 520,
     alignSelf: "center",
     alignItems: "center",
-    paddingTop: 12,
+    paddingTop: 0,
     paddingBottom: 24,
   },
-  intro: { gap: 14, alignItems: "center" },
-  title: {
-    fontSize: 35,
-    lineHeight: 43,
-    color: colors.ink,
-    fontWeight: "500",
-    letterSpacing: -1.3,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 15,
-    lineHeight: 24,
-    color: colors.muted,
-    textAlign: "center",
-    maxWidth: 310,
-  },
-  orb: { marginTop: 17, marginBottom: 15 },
   talkButton: {
     backgroundColor: colors.green,
     borderRadius: 30,
@@ -380,13 +323,6 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   checkinNote: { fontSize: 12, color: colors.muted },
-  goalNote: {
-    fontSize: 13,
-    lineHeight: 21,
-    textAlign: "center",
-    color: colors.muted,
-    paddingHorizontal: 18,
-  },
   disclosure: {
     fontSize: 11,
     lineHeight: 18,

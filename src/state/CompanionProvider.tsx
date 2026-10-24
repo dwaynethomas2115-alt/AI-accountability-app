@@ -173,9 +173,41 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       "messages",
       "voice_sessions",
     ];
+    const stale = () =>
+      version !== scope.current ||
+      request !== refreshCount.current ||
+      demoRef.current;
     const results = await Promise.all(
-      tables.map((table) =>
-        supabase!
+      tables.map(async (table) => {
+        if (table === "completions") {
+          // Lifetime garden growth must not disappear when the usual REST row cap
+          // is reached. UUID keyset pagination gives every page a stable boundary.
+          const completions: Snapshot["completions"] = [];
+          let after: string | undefined;
+          while (true) {
+            let query = supabase!
+              .from(table)
+              .select("id,goal_id,local_date", { count: "exact" })
+              .eq("user_id", current.user.id)
+              .order("id", { ascending: true })
+              .limit(1000)
+              .setHeader("Authorization", `Bearer ${current.access_token}`);
+            if (after) query = query.gt("id", after);
+            const page = await query;
+            if (stale() || page.error) return page;
+            const rows = page.data ?? [];
+            completions.push(...rows);
+            // Exact count also handles projects configured with a smaller REST cap.
+            if (
+              !rows.length ||
+              (page.count !== null && rows.length >= page.count) ||
+              (page.count === null && rows.length < 1000)
+            )
+              return { ...page, data: completions };
+            after = rows[rows.length - 1]!.id;
+          }
+        }
+        return supabase!
           .from(table)
           .select("*")
           .eq("user_id", current.user.id)
@@ -183,8 +215,8 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
           .limit(
             table === "messages" ? 100 : table === "voice_sessions" ? 20 : 1000,
           )
-          .setHeader("Authorization", `Bearer ${current.access_token}`),
-      ),
+          .setHeader("Authorization", `Bearer ${current.access_token}`);
+      }),
     );
     // Discard both data and errors from requests belonging to a previous account.
     if (
