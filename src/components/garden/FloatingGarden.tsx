@@ -1,269 +1,256 @@
 import React, { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, StyleSheet, View } from "react-native";
+import {
+  AccessibilityInfo,
+  Animated,
+  Easing,
+  Image,
+  StyleSheet,
+  View,
+} from "react-native";
 import Svg, {
   Defs,
-  LinearGradient,
   RadialGradient,
+  LinearGradient,
   Stop,
-  Path,
   Ellipse,
-  Circle,
+  Path,
   G,
+  Circle,
 } from "react-native-svg";
-import type { PlantKind } from "../../lib/garden";
-
+import { gardenGrowth, type PlantKind } from "../../lib/garden";
+import type { GardenWin } from "../../state/CompanionProvider";
 export type GardenPlantVisual = {
   id: string;
   kind: PlantKind;
   stage: number;
+  completions: number;
   title: string;
 };
 export const PLOTS = [
-  { x: 188, y: 284 },
-  { x: 360, y: 313 },
-  { x: 105, y: 340 },
-  { x: 278, y: 368 },
-  { x: 419, y: 356 },
-  { x: 63, y: 288 },
-  { x: 290, y: 268 },
-  { x: 182, y: 386 },
+  { x: 190, y: 245 },
+  { x: 365, y: 267 },
+  { x: 110, y: 293 },
+  { x: 275, y: 300 },
+  { x: 420, y: 292 },
+  { x: 70, y: 253 },
+  { x: 295, y: 224 },
+  { x: 190, y: 319 },
 ];
-const random = (n: number) => {
-  const x = Math.sin(n * 127.1 + 31.7) * 43758.5453;
-  return x - Math.floor(x);
+const ART = {
+  tree: require("../../../assets/garden/oak.png"),
+  blossom: require("../../../assets/garden/blossom.png"),
+  flower: require("../../../assets/garden/flower.png"),
+  lavender: require("../../../assets/garden/lavender.png"),
 };
-function Leaf({
-  x,
-  y,
-  size = 9,
-  angle = 0,
-  color = "#718B52",
-}: {
-  x: number;
-  y: number;
-  size?: number;
-  angle?: number;
-  color?: string;
-}) {
+function useReducedMotion() {
+  const [reduced, setReduced] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    AccessibilityInfo.isReduceMotionEnabled()
+      .then((v) => live && setReduced(v))
+      .catch(() => live && setReduced(true));
+    const s = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReduced,
+    );
+    return () => {
+      live = false;
+      s.remove();
+    };
+  }, []);
+  return reduced;
+}
+function Seedling() {
   return (
-    <Path
-      d={`M 0 0 Q ${-size} ${-size * 0.4} 0 ${-size * 2} Q ${size} ${-size * 0.4} 0 0`}
-      fill={color}
-      transform={`translate(${x} ${y}) rotate(${angle})`}
-    />
+    <Svg width="100%" height="100%" viewBox="0 0 120 140">
+      <Defs>
+        <LinearGradient id="seed-leaf" x1="0" y1="0" x2="1" y2="1">
+          <Stop offset="0" stopColor="#D1DA88" />
+          <Stop offset=".5" stopColor="#88A34E" />
+          <Stop offset="1" stopColor="#49662D" />
+        </LinearGradient>
+      </Defs>
+      <Ellipse cx={60} cy={130} rx={26} ry={5} fill="#43572F" opacity={0.16} />
+      <Path
+        d="M60 130 Q56 92 63 61"
+        stroke="#708B3D"
+        strokeWidth={4}
+        fill="none"
+      />
+      <Path
+        d="M61 98 Q19 98 17 55 Q58 54 61 98 M62 77 Q100 78 104 36 Q66 35 62 77"
+        fill="url(#seed-leaf)"
+      />
+      <Path
+        d="M61 98 L24 61 M63 77 L98 42"
+        stroke="#D5DB8D"
+        strokeWidth={1}
+        fill="none"
+      />
+    </Svg>
   );
 }
-function Flower({
-  x,
-  y,
-  size,
-  color,
-  seed = 1,
+function GrowingPlant({
+  plant,
+  index,
+  win,
+  reduced,
 }: {
-  x: number;
-  y: number;
-  size: number;
-  color: string;
-  seed?: number;
+  plant: GardenPlantVisual;
+  index: number;
+  win: GardenWin | null;
+  reduced: boolean | null;
 }) {
+  const p = PLOTS[index]!;
+  const tree = plant.kind === "tree" || plant.kind === "blossom";
+  const size =
+    (tree ? (plant.kind === "tree" ? 230 : 195) : 128) *
+    (index >= 5 ? 0.65 : 1);
+  const sprout = plant.stage < 2;
+  const seedSize = 64 * (index >= 5 ? 0.65 : 1);
+  const box = sprout ? seedSize : size;
+  const growth = (count: number) =>
+    tree ? gardenGrowth(count) : 0.25 + 0.75 * gardenGrowth(count);
+  const from = win?.goalId === plant.id ? win.before : plant.completions;
+  const earlyScale = (count: number) =>
+    count <= 0 ? 0 : count === 1 ? 0.8 : 1;
+  const target = sprout
+    ? earlyScale(plant.completions)
+    : growth(plant.completions);
+  const initial =
+    from < 3
+      ? (seedSize * earlyScale(from)) / box
+      : (size * growth(from)) / box;
+  const scale = useRef(new Animated.Value(initial)).current;
+  const previous = useRef({ box, target: initial });
+  useEffect(() => {
+    if (reduced === null) return;
+    // Keep the root and apparent size stable when a seedling becomes its plant.
+    if (previous.current.box !== box)
+      scale.setValue((previous.current.target * previous.current.box) / box);
+    const animation = Animated.timing(scale, {
+      toValue: target,
+      duration: reduced ? 0 : 1100,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    previous.current = { box, target };
+    return () => animation.stop();
+  }, [target, box, reduced, scale]);
   return (
-    <G transform={`translate(${x} ${y}) rotate(${seed * 13})`}>
-      {Array.from({ length: 7 }, (_, i) => (
-        <Ellipse
-          key={i}
-          cx={0}
-          cy={-size * 0.72}
-          rx={size * 0.43}
-          ry={size * 0.7}
-          fill={i % 2 ? color : "#F8D9B9"}
-          transform={`rotate(${(i * 360) / 7})`}
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: "absolute",
+        width: `${(box / 520) * 100}%`,
+        height: `${(box / 510) * 100}%`,
+        left: `${((p.x - box * 0.5) / 520) * 100}%`,
+        top: `${((p.y - box * 0.94) / 510) * 100}%`,
+        transformOrigin: "50% 94%",
+        transform: [{ scale }],
+      }}
+    >
+      {sprout ? (
+        <Seedling />
+      ) : (
+        <Image
+          source={ART[plant.kind]}
+          resizeMode="contain"
+          style={styles.art}
+          fadeDuration={0}
+          accessibilityElementsHidden
         />
-      ))}
-      <Circle r={size * 0.35} fill="#B78B42" />
-      <Circle
-        cx={-size * 0.1}
-        cy={-size * 0.1}
-        r={size * 0.15}
-        fill="#E9BF67"
-      />
-    </G>
+      )}
+    </Animated.View>
   );
 }
-function Sprout() {
-  return (
-    <G>
-      <Path
-        d="M0 0 Q-4 -16 0 -28"
-        stroke="#627B40"
-        strokeWidth={3}
-        fill="none"
-      />
-      <Leaf x={-1} y={-13} size={10} angle={-53} color="#8BA85D" />
-      <Leaf x={0} y={-23} size={8} angle={48} color="#B7C77C" />
-    </G>
-  );
-}
-function Tree({ stage, blossom }: { stage: number; blossom: boolean }) {
-  const scale = stage === 2 ? 0.48 : stage === 3 ? 0.74 : 1;
-  return (
-    <G transform={`scale(${scale})`}>
-      <Ellipse cx={4} cy={2} rx={45} ry={12} fill="#334D35" opacity={0.12} />
-      <Path
-        d="M-17 7 Q-5 -28 -10 -65 Q-13 -94 -28 -118 L-19 -122 Q0 -94 1 -74 Q8 -106 31 -125 L38 -120 Q14 -88 13 -63 Q9 -27 21 7 Q0 1 -17 7"
-        fill="url(#trunk)"
-      />
-      <Path
-        d="M-3 1 Q-5 -37 1 -66 M4 -52 Q-10 -68 -36 -89 M9 -61 Q31 -74 46 -97"
-        stroke="#8E7A4D"
-        strokeWidth={3}
-        fill="none"
-      />
-      <Path
-        d="M-4 -3 Q-24 7 -34 7 M8 -3 Q27 5 31 10"
-        stroke="#7D724B"
-        strokeWidth={5}
-        fill="none"
-        strokeLinecap="round"
-      />
-      {Array.from({ length: 15 }, (_, i) => {
-        const a = i * 2.4;
-        const r = Math.sqrt(i / 15);
-        const x = Math.cos(a) * 78 * r;
-        const y = -130 + Math.sin(a) * 43 * r;
-        return (
-          <Ellipse
-            key={i}
-            cx={x}
-            cy={y}
-            rx={35 + random(i) * 15}
-            ry={29 + random(i + 4) * 12}
-            fill={
-              blossom
-                ? ["#CE9691", "#E5B6A5", "#F1CEBB"][i % 3]
-                : ["#667E49", "#819359", "#9FAC6E"][i % 3]
-            }
-          />
-        );
-      })}
-      {Array.from({ length: 92 }, (_, i) => {
-        const a = i * 2.39996;
-        const r = Math.sqrt((i + 0.5) / 92);
-        const x = Math.cos(a) * 105 * r;
-        const y = -136 + Math.sin(a) * 64 * r;
-        return blossom ? (
-          <G key={i}>
-            <Circle
-              cx={x}
-              cy={y}
-              r={4 + random(i) * 5}
-              fill={["#FBE4CD", "#EFC7B3", "#E6ACA1"][i % 3]}
-            />
-            <Circle cx={x - 1} cy={y - 1} r={1.7} fill="#F7E9C9" />
-          </G>
-        ) : (
-          <Leaf
-            key={i}
-            x={x}
-            y={y}
-            size={5 + random(i) * 4}
-            angle={-60 + random(i + 90) * 120}
-            color={["#C2CA89", "#8EA462", "#ADB87A", "#768E52"][i % 4]}
-          />
-        );
-      })}
-    </G>
-  );
-}
-function FlowerPlant({
-  stage,
-  lavender,
+function GrowthLight({
+  win,
+  reduced,
 }: {
-  stage: number;
-  lavender: boolean;
+  win: GardenWin;
+  reduced: boolean | null;
 }) {
-  const scale = stage === 2 ? 0.48 : stage === 3 ? 0.76 : 1;
+  const a = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduced === null) return;
+    a.setValue(0);
+    const animation = Animated.sequence([
+      Animated.timing(a, {
+        toValue: 1,
+        duration: reduced ? 0 : 500,
+        useNativeDriver: true,
+      }),
+      Animated.delay(reduced ? 900 : 1500),
+      Animated.timing(a, {
+        toValue: 2,
+        duration: reduced ? 0 : 1300,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [win.id, reduced, a]);
   return (
-    <G transform={`scale(${scale})`}>
-      <Ellipse cx={0} cy={2} rx={31} ry={8} fill="#334D35" opacity={0.12} />
-      {Array.from({ length: lavender ? 11 : 5 }, (_, i) => {
-        const x = (i - (lavender ? 5 : 2)) * (lavender ? 5 : 12);
-        const height = lavender ? 52 + random(i) * 30 : 58 + random(i) * 53;
-        return (
-          <G key={i}>
-            <Path
-              d={`M${x * 0.6} 0 Q${x - 5} ${-height * 0.5} ${x} ${-height}`}
-              stroke={lavender ? "#7C9060" : "#70874D"}
-              strokeWidth={2.5}
-              fill="none"
-            />
-            <Leaf
-              x={x * 0.8}
-              y={-height * 0.3}
-              size={10}
-              angle={i % 2 ? 50 : -50}
-            />
-            <Leaf
-              x={x * 0.9}
-              y={-height * 0.52}
-              size={7}
-              angle={i % 2 ? -50 : 50}
-              color="#94A46A"
-            />
-            {lavender ? (
-              <G>
-                {Array.from({ length: 7 }, (_, j) => (
-                  <Ellipse
-                    key={j}
-                    cx={x + (j % 2 ? 2 : -2)}
-                    cy={-height + j * 4}
-                    rx={4 - j * 0.2}
-                    ry={4}
-                    fill={["#8B79A3", "#B8A2C6", "#A18AB7"][j % 3]}
-                  />
-                ))}
-              </G>
-            ) : (
-              <Flower
-                x={x}
-                y={-height}
-                size={15 + random(i + 5) * 5}
-                color={i % 2 ? "#E8A68B" : "#F0BD9D"}
-                seed={i}
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFill,
+        {
+          opacity: a.interpolate({
+            inputRange: [0, 1, 2],
+            outputRange: [0, 0.85, 0],
+          }),
+          transform: [
+            {
+              translateY: a.interpolate({
+                inputRange: [0, 2],
+                outputRange: [8, reduced ? 8 : -14],
+              }),
+            },
+          ],
+        },
+      ]}
+    >
+      <Svg width="100%" height="100%" viewBox="0 0 520 510">
+        <Defs>
+          <RadialGradient id="win-glow">
+            <Stop offset="0" stopColor="#FFF5C5" stopOpacity=".75" />
+            <Stop offset="1" stopColor="#FFF5C5" stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Ellipse cx={260} cy={248} rx={228} ry={166} fill="url(#win-glow)" />
+        {Array.from({ length: 17 }, (_, i) => {
+          const x = 62 + ((i * 79) % 394),
+            y = 132 + ((i * 47) % 185);
+          return (
+            <G key={i} transform={`translate(${x} ${y})`}>
+              <Path
+                d="M0 -5 Q1 -1 5 0 Q1 1 0 5 Q-1 1 -5 0 Q-1 -1 0 -5"
+                fill="#FFF6D4"
               />
-            )}
-          </G>
-        );
-      })}
-      <Leaf x={-4} y={1} size={20} angle={-65} color="#8D9E66" />
-      <Leaf x={5} y={1} size={17} angle={60} color="#A6B478" />
-    </G>
+              <Circle cx={-7} cy={13} r={1.5} fill="#EDD28D" />
+            </G>
+          );
+        })}
+      </Svg>
+    </Animated.View>
   );
 }
 export const FloatingGarden = React.memo(function FloatingGarden({
   plants,
   compact = false,
+  win = null,
 }: {
   plants: GardenPlantVisual[];
   compact?: boolean;
+  win?: GardenWin | null;
 }) {
+  const reduced = useReducedMotion();
   const float = useRef(new Animated.Value(0)).current;
-  const [reduce, setReduce] = useState(true);
   useEffect(() => {
-    let alive = true;
-    AccessibilityInfo.isReduceMotionEnabled()
-      .then((v) => alive && setReduce(v))
-      .catch(() => {});
-    const sub = AccessibilityInfo.addEventListener(
-      "reduceMotionChanged",
-      setReduce,
-    );
-    return () => {
-      alive = false;
-      sub.remove();
-    };
-  }, []);
-  useEffect(() => {
-    if (reduce) {
+    if (reduced !== false) {
       float.setValue(0);
       return;
     }
@@ -271,25 +258,27 @@ export const FloatingGarden = React.memo(function FloatingGarden({
       Animated.sequence([
         Animated.timing(float, {
           toValue: 1,
-          duration: 3700,
+          duration: 4300,
+          easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(float, {
           toValue: 0,
-          duration: 3700,
+          duration: 4300,
+          easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
       ]),
     );
     a.start();
     return () => a.stop();
-  }, [float, reduce]);
+  }, [float, reduced]);
   const grown = plants.filter((p) => p.stage > 0);
   const summary = grown.length
     ? grown
         .map(
           (p) =>
-            `${p.title}: ${["grass", "sprout", "young plant", "growing plant", "fully grown plant"][p.stage]}`,
+            `${p.title}: ${["grass", "sprout", "young plant", "growing plant", "fully grown plant"][p.stage]}, ${p.completions} completed ${p.completions === 1 ? "day" : "days"}`,
         )
         .join(". ")
     : "Just grass. Your garden will grow as you complete your goals.";
@@ -299,180 +288,73 @@ export const FloatingGarden = React.memo(function FloatingGarden({
       accessibilityLabel={`Your floating garden. ${summary}`}
       style={[styles.frame, compact && styles.compact]}
     >
-      <Animated.View
-        style={{
-          width: "100%",
-          height: "100%",
-          transform: [
-            {
-              translateY: float.interpolate({
-                inputRange: [0, 1],
-                outputRange: [3, -4],
-              }),
-            },
-          ],
-        }}
+      <Svg
+        style={StyleSheet.absoluteFill}
+        width="100%"
+        height="100%"
+        viewBox="0 0 520 510"
       >
-        <Svg width="100%" height="100%" viewBox="0 0 520 510">
-          <Defs>
-            <RadialGradient id="sky" cx="40%" cy="40%" r="65%">
-              <Stop offset="0" stopColor="#F4E4BD" stopOpacity=".55" />
-              <Stop offset="1" stopColor="#F8F5EF" stopOpacity="0" />
-            </RadialGradient>
-            <LinearGradient id="stone" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor="#B6AF8D" />
-              <Stop offset=".45" stopColor="#918D70" />
-              <Stop offset="1" stopColor="#CEC1A0" />
-            </LinearGradient>
-            <RadialGradient id="grass" cx="33%" cy="25%" r="80%">
-              <Stop offset="0" stopColor="#D9D9A0" />
-              <Stop offset=".45" stopColor="#B2BF80" />
-              <Stop offset="1" stopColor="#6E8759" />
-            </RadialGradient>
-            <LinearGradient id="trunk" x1="0" y1="0" x2="1" y2="0">
-              <Stop offset="0" stopColor="#6B6748" />
-              <Stop offset=".5" stopColor="#A18C5E" />
-              <Stop offset="1" stopColor="#7B7351" />
-            </LinearGradient>
-            <LinearGradient id="water" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#F4F6D8" stopOpacity=".85" />
-              <Stop offset=".6" stopColor="#D9E8DD" stopOpacity=".5" />
-              <Stop offset="1" stopColor="#F8F5EF" stopOpacity="0" />
-            </LinearGradient>
-          </Defs>
-          <Ellipse cx={245} cy={240} rx={270} ry={240} fill="url(#sky)" />
-          <G opacity={0.23}>
-            <Path d="M441 143 L489 147 L471 186 Z" fill="#C2B899" />
-            <Ellipse cx={465} cy={143} rx={27} ry={9} fill="#BAC697" />
-            <Path d="M18 220 L58 226 L41 261 Z" fill="#C2B899" />
-            <Ellipse cx={37} cy={219} rx={23} ry={7} fill="#BAC697" />
-          </G>
-          <Ellipse
-            cx={266}
-            cy={483}
-            rx={126}
-            ry={8}
-            fill="#AEB8A2"
-            opacity={0.12}
-          />
-          <Path
-            d="M40 320 L65 381 L104 406 L134 448 L189 448 L233 491 L280 475 L308 449 L365 444 L386 409 L440 384 L474 322 Z"
-            fill="url(#stone)"
-          />
-          <Path
-            d="M75 350 L117 383 L134 448 L104 406 L65 381 Z M168 369 L204 420 L233 491 L189 448 Z M310 372 L343 401 L308 449 L280 475 Z"
-            fill="#73765D"
-            opacity={0.32}
-          />
-          <Path
-            d="M134 375 L145 423 L189 448 L170 404 Z M251 389 L233 491 L280 475 L276 408 Z M387 355 L365 444 L386 409 L440 384 Z"
-            fill="#DED1AD"
-            opacity={0.48}
-          />
-          <Path
-            d="M40 320 Q29 287 79 265 Q135 242 194 249 Q271 220 354 250 Q439 249 476 298 Q506 334 446 359 Q361 399 267 399 Q168 408 85 368 Q39 349 40 320"
-            fill="#698250"
-          />
-          <Path
-            d="M41 311 Q38 283 84 266 Q146 240 200 250 Q274 226 350 250 Q428 250 472 296 Q494 326 449 352 Q369 384 274 386 Q175 397 91 361 Q41 344 41 311"
-            fill="url(#grass)"
-          />
-          <Path
-            d="M80 354 Q99 358 113 357 Q106 409 118 460 Q103 450 100 427 Q94 392 80 354"
-            fill="url(#water)"
-          />
-          <Path
-            d="M87 358 Q89 400 106 446 M99 362 Q97 398 111 431"
-            stroke="#FFFCE4"
-            strokeWidth={2}
-            opacity={0.5}
-            fill="none"
-          />
-          {Array.from({ length: 150 }, (_, i) => {
-            const a = i * 2.39996;
-            const r = Math.sqrt((i + 0.5) / 150);
-            const x = 260 + Math.cos(a) * 208 * r;
-            const y = 318 + Math.sin(a) * 61 * r;
-            return (
-              <Path
-                key={i}
-                d={`M${x - 3} ${y} q-3 -9 -6 -11 M${x} ${y} q1 -12 4 -15 M${x + 2} ${y} q5 -6 9 -7`}
-                stroke={["#7A9456", "#A1B370", "#D3DA99", "#8C9D62"][i % 4]}
-                strokeWidth={1.5}
-                opacity={0.7}
-                strokeLinecap="round"
-                fill="none"
-              />
-            );
-          })}
-          {(
-            [
-              [60, 333, 14],
-              [439, 339, 18],
-              [153, 377, 12],
-              [384, 371, 10],
-              [73, 287, 11],
-            ] as const
-          ).map(([x, y, r], i) => (
-            <G key={i}>
-              <Ellipse cx={x} cy={y} rx={r} ry={r * 0.6} fill="#8E9678" />
-              <Path
-                d={`M${x - r} ${y} Q${x - 3} ${y - r * 1.5} ${x + r} ${y} Z`}
-                fill={i % 2 ? "#C2BDA0" : "#D2CCAA"}
-              />
-            </G>
-          ))}
-          {[75, 160, 372, 437].map((x, i) => (
-            <G key={x}>
-              <Path
-                d={`M${x} ${354 + (i % 2) * 21} q-12 17 -3 37 q14 12 5 28`}
-                stroke="#83945B"
-                strokeWidth={2}
-                fill="none"
-              />
-              {[0, 1, 2, 3, 4].map((j) => (
-                <Leaf
-                  key={j}
-                  x={x + (j % 2 ? 3 : -4)}
-                  y={366 + (i % 2) * 21 + j * 9}
-                  size={5}
-                  angle={j % 2 ? 65 : -65}
-                  color={j % 2 ? "#AABB75" : "#849B5F"}
+        <Defs>
+          <RadialGradient id="sky">
+            <Stop offset="0" stopColor="#F0E5BF" stopOpacity=".7" />
+            <Stop offset="1" stopColor="#F8F5EF" stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Ellipse cx={215} cy={220} rx={280} ry={230} fill="url(#sky)" />
+        <Ellipse
+          cx={255}
+          cy={495}
+          rx={128}
+          ry={9}
+          fill="#8F9F89"
+          opacity={0.11}
+        />
+      </Svg>
+      <Animated.View
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            transform: [
+              {
+                translateY: float.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [3, -3],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Image
+          source={require("../../../assets/garden/island.png")}
+          style={styles.art}
+          resizeMode="contain"
+          fadeDuration={0}
+          accessibilityElementsHidden
+        />
+        {plants
+          .slice(0, 8)
+          .map((plant, index) => ({ plant, index }))
+          .sort((a, b) => PLOTS[a.index]!.y - PLOTS[b.index]!.y)
+          .map(
+            ({ plant, index }) =>
+              plant.stage > 0 && (
+                <GrowingPlant
+                  key={plant.id}
+                  plant={plant}
+                  index={index}
+                  win={win}
+                  reduced={reduced}
                 />
-              ))}
-            </G>
-          ))}
-          {plants
-            .slice(0, 8)
-            .map((p, i) => ({ p, plot: PLOTS[i]! }))
-            .sort((a, b) => a.plot.y - b.plot.y)
-            .map(
-              ({ p, plot }) =>
-                p.stage > 0 && (
-                  <G key={p.id} transform={`translate(${plot.x} ${plot.y})`}>
-                    {p.stage === 1 ? (
-                      <Sprout />
-                    ) : p.kind === "tree" || p.kind === "blossom" ? (
-                      <Tree stage={p.stage} blossom={p.kind === "blossom"} />
-                    ) : (
-                      <FlowerPlant
-                        stage={p.stage}
-                        lavender={p.kind === "lavender"}
-                      />
-                    )}
-                  </G>
-                ),
-            )}
-          <G opacity={0.55}>
-            <Path d="M360 465 l7 3 -2 10 -7 -5 Z" fill="#9A9478" />
-            <Path d="M148 462 l5 1 4 7 -7 4 -3 -6 Z" fill="#BCB293" />
-          </G>
-        </Svg>
+              ),
+          )}
+        {win && <GrowthLight key={win.id} win={win} reduced={reduced} />}
       </Animated.View>
     </View>
   );
 });
 const styles = StyleSheet.create({
+  art: { position: "absolute", top: 0, left: 0, width: "100%", height: "100%" },
   frame: { width: "100%", aspectRatio: 520 / 510 },
   compact: { maxWidth: 270, alignSelf: "center" },
 });

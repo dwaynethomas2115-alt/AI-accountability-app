@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   gardenPlants,
+  gardenGrowth,
   gardenStage,
   gardenToday,
   plantKind,
@@ -26,12 +27,25 @@ function done(id: string, date: string, suffix = ""): Completion {
   return { id: `${id}-${date}-${suffix}`, goal_id: id, local_date: date };
 }
 
-test("a new garden starts at grass and grows only at earned completion milestones", () => {
+test("a new garden starts at grass and changes plant stages at earned milestones", () => {
   assert.deepEqual(
     [0, 1, 2, 3, 6, 7, 13, 14, 90].map(gardenStage),
     [0, 1, 1, 2, 2, 3, 3, 4, 4],
   );
   assert.equal(gardenPlants([goal("a")], [], zone, now)[0]!.stage, 0);
+});
+
+test("each completed day grows the plant between and beyond milestones", () => {
+  assert.equal(gardenGrowth(0), 0);
+  for (let day = 1; day <= 365; day++) {
+    assert.ok(
+      gardenGrowth(day) > gardenGrowth(day - 1),
+      `Completed day ${day} should add growth`,
+    );
+    assert.ok(gardenGrowth(day) < 1.2, "Plants stay within the garden");
+  }
+  assert.equal(gardenGrowth(-2), 0);
+  assert.equal(gardenGrowth(Number.NaN), 0);
 });
 
 test("growth deduplicates days, excludes invalid/future records, and remains after a break or pause", () => {
@@ -80,7 +94,7 @@ test("plant identity and placement survive renaming, reordered goals and unrelat
   assert.equal(plantKind("a"), plantKind("a"));
 });
 
-test("daily circle respects local weekdays, paused goals and duplicate completion records", () => {
+test("daily circle includes bonus-day effort and excludes paused goals and duplicate records", () => {
   const goals = [
     goal("daily"),
     goal("friday", { schedule: { kind: "weekly", days: [5] } }),
@@ -100,9 +114,9 @@ test("daily circle respects local weekdays, paused goals and duplicate completio
     now,
   );
   assert.equal(status.today, "2026-10-23");
-  assert.equal(status.total, 2);
-  assert.equal(status.done, 1);
-  assert.deepEqual(status.doneGoalIds, ["daily"]);
+  assert.equal(status.total, 3);
+  assert.equal(status.done, 2);
+  assert.deepEqual(status.doneGoalIds, ["daily", "saturday"]);
   assert.deepEqual(gardenToday([], [], zone, now), {
     today: "2026-10-23",
     dueGoals: [],

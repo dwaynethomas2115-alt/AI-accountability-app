@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import {
   Mic,
@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
 } from "lucide-react-native";
 import { colors, s, Button } from "../components/ui";
+import { ConversationWins } from "../components/garden/ConversationWins";
 import { GardenHome } from "../components/garden/GardenHome";
 import { useCompanion } from "../state/CompanionProvider";
 import { nextCheckin, formatCheckinTime } from "../lib/plan";
@@ -26,6 +27,21 @@ export function TalkScreen({
   const c = useCompanion();
   const [now, setNow] = useState(new Date());
   const [demoNotice, setDemoNotice] = useState(false);
+  const [reviewWin, setReviewWin] = useState(false);
+  const wasTalking = useRef(false);
+  useEffect(() => {
+    const hadUserSpeech = voice.transcripts.some(
+      (turn) => turn.role === "user" && turn.final && turn.content.trim(),
+    );
+    if (wasTalking.current && !voice.active && hadUserSpeech && !voice.error)
+      setReviewWin(true);
+    if (voice.active) setReviewWin(false);
+    wasTalking.current = voice.active;
+  }, [voice.active, voice.transcripts, voice.error]);
+  useEffect(() => {
+    setReviewWin(false);
+    wasTalking.current = false;
+  }, [c.session?.user.id, c.demo]);
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
@@ -122,6 +138,13 @@ export function TalkScreen({
           </>
         ) : (
           <>
+            {reviewWin && (
+              <ConversationWins
+                initiallyOpen
+                onRecorded={() => setReviewWin(false)}
+                onDismiss={() => setReviewWin(false)}
+              />
+            )}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Let’s talk"

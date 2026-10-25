@@ -16,9 +16,10 @@ Use Node 24.19 (see `.nvmrc`). Expo SDK 58. Copy `.env.example` to `.env` and fo
 
 ## The simple experience
 
-- A floating garden begins with grass. Each goal owns a flower or tree that grows after 1, 3, 7 and 14 completed days. Paused goals and missed days keep earned growth.
-- Tap the daily progress circle to mark scheduled goals complete or correct today’s entry. The circle resets daily; lifetime garden growth is calculated from saved completions.
-- **Preview garden growth** shows five sample stages without writing progress or changing the account. **Back to my garden** restores the real view.
+- A detailed floating garden begins with grass. Each goal owns a flower or tree that grows with every completed day, with new stages at 1, 3, 7 and 14 days. Each newly saved accomplishment shows its growth and a celebration. Paused goals and missed days keep earned growth; reduced-motion settings are respected.
+- After a voice conversation or a successful text message, users can confirm a completed goal and return to their growing garden. Recording the same goal again today never adds duplicate progress. Conversations alone do not award completions.
+- Tap the daily progress circle to mark scheduled goals complete or correct today’s entry. The circle includes extra goals completed on unscheduled days and resets daily; lifetime garden growth is calculated from saved completions.
+- **Preview garden growth** shows five sample stages and **Preview one more day** demonstrates growth between stages, without writing progress or changing the account. **Back to my garden** restores the real view.
 
 - Setup asks only for goals, a convenient time, and check-in frequency. Users can also describe the plan by voice.
 - **Let’s talk** starts an actual two-way Realtime audio conversation anytime. Voice supports interruption, live captions, mute and end. Microphone access starts only after the user presses the button, and stops on end, backgrounding, sign-out or navigation.

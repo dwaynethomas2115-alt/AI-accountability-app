@@ -20,6 +20,7 @@ import {
   type Message,
 } from "../lib/types";
 import { normalizePlan, type Plan } from "../lib/plan";
+import { gardenPlants } from "../lib/garden";
 const uid = randomUUID;
 function normalizeSnapshot(raw: Partial<Snapshot> | null): Snapshot {
   const empty = emptySnapshot();
@@ -40,6 +41,14 @@ function missingTable(error: { code?: string } | null) {
   return error?.code === "PGRST205" || error?.code === "42P01";
 }
 
+export type GardenWin = {
+  id: string;
+  goalId: string;
+  title: string;
+  before: number;
+  after: number;
+};
+
 type Actions = {
   data: Snapshot;
   loading: boolean;
@@ -47,6 +56,9 @@ type Actions = {
   demo: boolean;
   session: Session | null;
   error: string;
+  latestGardenWin: GardenWin | null;
+  dismissGardenWin: () => void;
+  recordCompletion: (goalId: string) => Promise<void>;
   clearError: () => void;
   enterDemo: () => void;
   signOut: () => Promise<void>;
@@ -73,6 +85,11 @@ type Actions = {
 const Context = createContext<Actions | null>(null);
 export function CompanionProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<Snapshot>(emptySnapshot);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const [latestGardenWin, setLatestGardenWin] = useState<GardenWin | null>(
+    null,
+  );
   const [demo, setDemo] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
@@ -117,6 +134,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
           lock.current = null;
           setBusy(false);
           setData(emptySnapshot());
+          setLatestGardenWin(null);
           setDataLoading(Boolean(next));
           setError("");
         }
@@ -332,6 +350,87 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     if (error) throw error;
     await refresh();
   }
+  function completionGoal(id: string, requireActive = true) {
+    const current = assertActiveScope();
+    const goal = dataRef.current.goals.find((item) => item.id === id);
+    if (
+      !goal ||
+      goal.user_id !== (demo ? "demo" : current?.user.id) ||
+      (requireActive && goal.status !== "active")
+    )
+      throw new Error("Choose one of your active goals to record progress.");
+    return goal;
+  }
+  async function recordCompletionNow(id: string) {
+    const current = assertActiveScope();
+    const goal = completionGoal(id);
+    const snapshot = dataRef.current;
+    const now = new Date();
+    const date = localDate(now, snapshot.profile.timezone);
+    // Repeated confirmation is a no-op; it never undoes a recorded effort.
+    if (
+      snapshot.completions.some(
+        (item) => item.goal_id === id && item.local_date === date,
+      )
+    )
+      return;
+    const before = gardenPlants(
+      [goal],
+      snapshot.completions,
+      snapshot.profile.timezone,
+      now,
+    )[0]!.completions;
+    let completion = { id: uid(), goal_id: id, local_date: date };
+    if (!demo) {
+      const { data: inserted, error } = await supabase!
+        .from("completions")
+        .upsert(
+          { ...completion, user_id: current!.user.id },
+          { onConflict: "goal_id,local_date", ignoreDuplicates: true },
+        )
+        .select("id,goal_id,local_date")
+        .setHeader("Authorization", `Bearer ${current!.access_token}`);
+      assertActiveScope();
+      if (error) throw error;
+      if (!inserted?.length) {
+        // Another device may already have saved this day. Load that fact without
+        // manufacturing another win or incrementing the plant a second time.
+        await refresh();
+        return;
+      }
+      completion = inserted[0]!;
+    }
+    assertActiveScope();
+    const updated = {
+      ...dataRef.current,
+      completions: [
+        ...dataRef.current.completions.filter(
+          (item) => !(item.goal_id === id && item.local_date === date),
+        ),
+        completion,
+      ],
+    };
+    // Update the ref synchronously too: an old callback retained by a chat cannot
+    // double-record a demo win while React is batching the next render.
+    dataRef.current = updated;
+    setData(updated);
+    const after = gardenPlants(
+      [goal],
+      updated.completions,
+      updated.profile.timezone,
+      now,
+    )[0]!.completions;
+    setLatestGardenWin({
+      id: uid(),
+      goalId: goal.id,
+      title: goal.title,
+      before,
+      after,
+    });
+    // The insert was confirmed and is already reflected locally. A later refresh
+    // failure must not turn that saved accomplishment into a reported save failure.
+    if (!demo) void refresh().catch(() => {});
+  }
   const actions: Actions = {
     data,
     loading,
@@ -339,6 +438,11 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     demo,
     session,
     error,
+    latestGardenWin,
+    dismissGardenWin: () => {
+      if (actionScope === scope.current) setLatestGardenWin(null);
+    },
+    recordCompletion: (id) => run(() => recordCompletionNow(id)),
     clearError: () => setError(""),
     enterDemo: () => {
       if (lock.current || demoRef.current) return;
@@ -346,6 +450,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       demoRef.current = true;
       setDemo(true);
       setData(emptySnapshot());
+      setLatestGardenWin(null);
       setDemoLoading(true);
       setError("");
       AsyncStorage.getItem("kindred-demo")
@@ -393,6 +498,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
         setDemoLoading(false);
         setDataLoading(Boolean(sessionRef.current));
         setData(emptySnapshot());
+        setLatestGardenWin(null);
         setError("");
       }),
     refresh,
@@ -504,29 +610,38 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
             completions: d.completions.filter((c) => c.goal_id !== id),
           }));
         else await write("goals", "delete", {}, id);
+        assertActiveScope();
+        setLatestGardenWin((win) => (win?.goalId === id ? null : win));
       }),
     toggleCompletion: (id) =>
       run(async () => {
-        const date = localDate(new Date(), data.profile.timezone);
-        const done = data.completions.find(
-          (c) => c.goal_id === id && c.local_date === date,
+        completionGoal(id, false);
+        const date = localDate(new Date(), dataRef.current.profile.timezone);
+        const done = dataRef.current.completions.find(
+          (item) => item.goal_id === id && item.local_date === date,
         );
-        if (demo)
-          setData((d) => ({
-            ...d,
-            completions: done
-              ? d.completions.filter((c) => c.id !== done.id)
-              : [
-                  ...d.completions,
-                  { id: uid(), goal_id: id, local_date: date },
-                ],
-          }));
-        else if (done) await write("completions", "delete", {}, done.id);
-        else
-          await write("completions", "insert", {
-            goal_id: id,
-            local_date: date,
-          });
+        if (!done) return recordCompletionNow(id);
+        if (!demo) {
+          const current = assertActiveScope()!;
+          const { error } = await supabase!
+            .from("completions")
+            .delete()
+            .eq("id", done.id)
+            .eq("user_id", current.user.id)
+            .setHeader("Authorization", `Bearer ${current.access_token}`);
+          assertActiveScope();
+          if (error) throw error;
+        }
+        const updated = {
+          ...dataRef.current,
+          completions: dataRef.current.completions.filter(
+            (item) => item.id !== done.id,
+          ),
+        };
+        dataRef.current = updated;
+        setData(updated);
+        if (!demo) void refresh().catch(() => {});
+        setLatestGardenWin((win) => (win?.goalId === id ? null : win));
       }),
     saveEvent: (event, source) =>
       run(async () => {

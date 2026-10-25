@@ -13,6 +13,7 @@ import { FloatingGarden, PLOTS } from "./FloatingGarden";
 import { useCompanion } from "../../state/CompanionProvider";
 import {
   gardenPlants,
+  gardenStage,
   gardenToday,
   GARDEN_STAGE_NAMES,
   GARDEN_THRESHOLDS,
@@ -117,7 +118,12 @@ export function GardenHome({
 }) {
   const c = useCompanion();
   const [now, setNow] = useState(new Date());
-  const [preview, setPreview] = useState<GardenStage | null>(null);
+  const [preview, setPreviewStage] = useState<GardenStage | null>(null);
+  const [previewDays, setPreviewDays] = useState(0);
+  function setPreview(stage: GardenStage | null) {
+    setPreviewStage(stage);
+    setPreviewDays(stage === null ? 0 : GARDEN_THRESHOLDS[stage]);
+  }
   const [details, setDetails] = useState(false);
   const [plotPage, setPlotPage] = useState(0);
   const [notice, setNotice] = useState("");
@@ -167,10 +173,10 @@ export function GardenHome({
               ["tree", "blossom", "lavender", "flower", "flower"] as PlantKind[]
             )[i]!,
             stage: preview,
-            completions: GARDEN_THRESHOLDS[preview],
+            completions: previewDays,
           }))
         : plants,
-    [preview, plants, samplePlants],
+    [preview, previewDays, plants, samplePlants],
   );
   const pageCount = Math.max(1, Math.ceil(display.length / 8));
   const page = Math.min(plotPage, pageCount - 1);
@@ -184,6 +190,7 @@ export function GardenHome({
         id: p.goal.id,
         kind: p.kind,
         stage: p.stage,
+        completions: p.completions,
         title: p.goal.title,
       })),
     [visible],
@@ -198,6 +205,16 @@ export function GardenHome({
   const shownDone = previewing
     ? Math.round((shownTotal * preview!) / 4)
     : today.done;
+  useEffect(() => {
+    if (!c.latestGardenWin || active) return;
+    setPreview(null);
+    setDetails(false);
+    const position = plants.findIndex(
+      (p) => p.goal.id === c.latestGardenWin!.goalId,
+    );
+    if (position >= 0) setPlotPage(Math.floor(position / 8));
+  }, [c.latestGardenWin?.id, active]);
+  const win = !previewing ? c.latestGardenWin : null;
   async function complete(goal: Goal) {
     setNotice("");
     try {
@@ -238,6 +255,25 @@ export function GardenHome({
               setDetails(!details);
             }}
           />
+        </View>
+      )}
+      {win && !active && (
+        <View accessibilityLiveRegion="polite" style={styles.winCard}>
+          <Text style={styles.eyebrow}>A SMALL WIN, A LITTLE GROWTH</Text>
+          <Text style={styles.winTitle}>{win.title} grew a little.</Text>
+          <Text style={styles.hint}>
+            +1 completed day · {win.after} {win.after === 1 ? "day" : "days"} of
+            care. Your progress is saved.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Keep growing"
+            onPress={c.dismissGardenWin}
+            style={styles.winDismiss}
+          >
+            <Text style={styles.winLink}>Keep growing</Text>
+            <Check size={16} color={colors.green} />
+          </Pressable>
         </View>
       )}
       {details && !active ? (
@@ -284,7 +320,7 @@ export function GardenHome({
                           : ""}
                     </Text>
                   </View>
-                  {due && (
+                  {(due || done) && (
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={
@@ -321,7 +357,7 @@ export function GardenHome({
         </View>
       ) : (
         <View style={styles.scene}>
-          <FloatingGarden compact={active} plants={visuals} />
+          <FloatingGarden compact={active} plants={visuals} win={win} />
           {!active &&
             visible.map(
               (p, i) =>
@@ -408,6 +444,19 @@ export function GardenHome({
                 </Pressable>
               ))}
             </View>
+            <Button
+              secondary
+              title="Preview one more day"
+              onPress={() => {
+                const next = previewDays + 1;
+                setPreviewDays(next);
+                setPreviewStage(gardenStage(next));
+              }}
+            />
+            <Text accessibilityLiveRegion="polite" style={styles.hint}>
+              Preview: {previewDays} completed{" "}
+              {previewDays === 1 ? "day" : "days"}. Each new day adds growth.
+            </Text>
             <Text style={styles.hint}>
               In your garden, each plant grows independently with its goal.
             </Text>
@@ -439,6 +488,30 @@ export function GardenHome({
   );
 }
 const styles = StyleSheet.create({
+  winCard: {
+    width: "100%",
+    backgroundColor: "#EDF0DE",
+    borderColor: "#D9E2C9",
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+    gap: 8,
+    marginTop: 14,
+  },
+  winTitle: {
+    fontSize: 18,
+    lineHeight: 25,
+    fontWeight: "500",
+    color: colors.ink,
+  },
+  winDismiss: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    minHeight: 36,
+    alignSelf: "flex-start",
+  },
+  winLink: { color: colors.green, fontWeight: "600", fontSize: 12 },
   wrap: { width: "100%", alignItems: "center" },
   top: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8 },
   intro: { flex: 1, gap: 8 },

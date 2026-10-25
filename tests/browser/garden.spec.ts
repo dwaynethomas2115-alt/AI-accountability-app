@@ -34,6 +34,35 @@ const undo = (page: Page, title: string) =>
 const snapshot = (page: Page) =>
   page.evaluate(() => JSON.parse(localStorage.getItem("kindred-demo") || "{}"));
 
+async function artworkFitsGarden(page: Page) {
+  const garden = page.getByRole("img", { name: /Your floating garden/ });
+  await expect
+    .poll(() =>
+      garden.evaluate((root) => {
+        const frame = root.getBoundingClientRect();
+        const images = [...root.querySelectorAll("img")];
+        return (
+          images.length > 0 &&
+          images.every((image) => {
+            const bounds = image.getBoundingClientRect();
+            return (
+              image.complete &&
+              image.naturalWidth > 0 &&
+              bounds.width > 0 &&
+              bounds.width <= frame.width + 1 &&
+              bounds.height <= frame.height + 1 &&
+              bounds.left >= frame.left - 8 &&
+              bounds.right <= frame.right + 8 &&
+              bounds.top >= frame.top - 8 &&
+              bounds.bottom <= frame.bottom + 8
+            );
+          })
+        );
+      }),
+    )
+    .toBe(true);
+}
+
 // The preview must never create completions or otherwise rewrite the user's plan.
 test("a new garden starts empty and every preview stage leaves saved progress untouched", async ({
   page,
@@ -42,6 +71,7 @@ test("a new garden starts empty and every preview stage leaves saved progress un
   page.on("pageerror", (error) => errors.push(error.message));
   await makePlan(page);
   await expect(ring(page)).toContainText(/0\s*\/\s*2/);
+  await artworkFitsGarden(page);
   const original = await snapshot(page);
   expect(original.completions).toEqual([]);
   await expect(
@@ -73,8 +103,33 @@ test("a new garden starts empty and every preview stage leaves saved progress un
         name: new RegExp(`Your floating garden\\. .*${stage}`),
       }),
     ).toBeVisible();
+    await artworkFitsGarden(page);
     expect(await snapshot(page)).toEqual(original);
   }
+  await page
+    .getByRole("button", { name: "Preview one more day", exact: true })
+    .click();
+  await expect(
+    page.getByText("Preview: 15 completed days. Each new day adds growth.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", {
+      name: /Movement: fully grown plant, 15 completed days/,
+    }),
+  ).toBeVisible();
+  expect(await snapshot(page)).toEqual(original);
+  await page
+    .getByRole("button", { name: "First sprouts", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Preview one more day", exact: true })
+    .click();
+  await expect(
+    page.getByRole("img", { name: /Movement: sprout, 2 completed days/ }),
+  ).toBeVisible();
+  expect(await snapshot(page)).toEqual(original);
   await page
     .getByRole("button", { name: "Back to my garden", exact: true })
     .click();
@@ -97,16 +152,30 @@ test("daily goal completions grow progress, persist after reload and can be corr
     page.getByRole("heading", { name: "Your garden", exact: true }),
   ).toBeVisible();
   await mark(page, "Walk outside").click();
-  await expect(undo(page, "Walk outside")).toBeVisible();
+  await expect(
+    page.getByText("Walk outside grew a little.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: /Walk outside: sprout, 1 completed day/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your garden", exact: true }),
+  ).toBeHidden();
   await expect(ring(page)).toContainText(/1\s*\/\s*2/);
+  await page.getByRole("button", { name: "Keep growing", exact: true }).click();
+  await expect(
+    page.getByText("Walk outside grew a little.", { exact: true }),
+  ).toBeHidden();
+  await ring(page).click();
+  await expect(undo(page, "Walk outside")).toBeVisible();
   await mark(page, "Read ten minutes").click();
+  await expect(
+    page.getByText("Read ten minutes grew a little.", { exact: true }),
+  ).toBeVisible();
   await expect(ring(page)).toContainText(/2\s*\/\s*2/);
   await expect
     .poll(async () => (await snapshot(page)).completions.length)
     .toBe(2);
-  await page
-    .getByRole("button", { name: "Close garden details", exact: true })
-    .click();
   await expect(
     page.getByRole("img", { name: /Walk outside: sprout/ }),
   ).toBeVisible();

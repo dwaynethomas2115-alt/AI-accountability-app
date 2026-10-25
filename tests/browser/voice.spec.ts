@@ -84,10 +84,12 @@ async function installMedia(page: Page) {
 async function installBackend(page: Page, startStatus = 200) {
   const requests = {
     starts: 0,
+    completionWrites: [] as Record<string, any>[],
     finishes: [] as Record<string, any>[],
     saves: [] as Record<string, any>[],
     sdps: [] as { authorization: string | undefined; body: string | null }[],
   };
+  const completions: Record<string, any>[] = [];
   let profile = {
     user_id: userId,
     display_name: "Sam",
@@ -172,10 +174,26 @@ async function installBackend(page: Page, startStatus = 200) {
       }));
       return json(null);
     }
+    if (
+      url.pathname === "/rest/v1/completions" &&
+      request.method() === "POST"
+    ) {
+      const body = request.postDataJSON();
+      requests.completionWrites.push(body);
+      const row = { ...body, id: "new-completion" };
+      completions.push(row);
+      return json([row]);
+    }
     if (url.pathname.startsWith("/rest/v1/")) {
       const table = url.pathname.split("/").at(-1);
       return json(
-        table === "profiles" ? [profile] : table === "goals" ? goals : [],
+        table === "profiles"
+          ? [profile]
+          : table === "goals"
+            ? goals
+            : table === "completions"
+              ? completions
+              : [],
       );
     }
     throw new Error(
@@ -307,6 +325,27 @@ test("signed-in voice starts only on request, transcribes, mutes, and releases t
     }),
   ).toEqual({ tracks: 1, peers: 1, channels: 1 });
   await expect(page.locator("audio")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", {
+      name: "A small win to bring back?",
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(requests.completionWrites).toHaveLength(0);
+  await page
+    .getByRole("button", {
+      name: "Record Walk a little more for today",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Today’s progress", exact: true }),
+  ).toContainText(/1\s*\/\s*1/);
+  expect(requests.completionWrites).toHaveLength(1);
+  expect(requests.completionWrites[0]).toMatchObject({
+    user_id: userId,
+    goal_id: "initial-goal",
+  });
   expect(errors).toEqual([]);
 });
 
@@ -417,6 +456,13 @@ test("an unavailable voice endpoint shows an honest error and stops microphone c
     page.getByRole("button", { name: "End conversation", exact: true }),
   ).toHaveCount(0);
   await expect(page.locator("audio")).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", {
+      name: "A small win to bring back?",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(requests.completionWrites).toHaveLength(0);
 });
 
 test("switching accounts ends an active conversation and discards the previous account's proposal", async ({
@@ -495,4 +541,32 @@ test("switching accounts ends an active conversation and discards the previous a
   ).toBe(1);
   expect(requests.saves).toHaveLength(0);
   expect(requests.finishes).toHaveLength(0);
+});
+
+test("an assistant greeting alone does not offer or award goal progress", async ({
+  page,
+}) => {
+  await installMedia(page);
+  const requests = await installBackend(page);
+  await signIn(page);
+  await page.getByRole("button", { name: "Let’s talk", exact: true }).click();
+  await expect(page.getByText("I’m listening", { exact: true })).toBeVisible();
+  await emit(page, {
+    type: "response.output_audio_transcript.done",
+    item_id: "greeting-only",
+    transcript: "Hello, how are you feeling today?",
+  });
+  await page
+    .getByRole("button", { name: "End conversation", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Let’s talk", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "A small win to bring back?",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(requests.completionWrites).toHaveLength(0);
 });

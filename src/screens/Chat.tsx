@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { ArrowUp, Mic } from "lucide-react-native";
 import { colors, s } from "../components/ui";
+import { ConversationWins } from "../components/garden/ConversationWins";
 import { EventEditor } from "../components/Editors";
 import type { Message } from "../lib/types";
 import { useCompanion } from "../state/CompanionProvider";
@@ -17,6 +18,7 @@ export function Chat({ onTalk }: { onTalk: () => void }) {
   const c = useCompanion();
   const [text, setText] = useState("");
   const [pending, setPending] = useState("");
+  const [canReviewWin, setCanReviewWin] = useState(false);
   const scroll = useRef<React.ElementRef<typeof ScrollView>>(null);
   useEffect(() => {
     scroll.current?.scrollToEnd({ animated: true });
@@ -28,6 +30,7 @@ export function Chat({ onTalk }: { onTalk: () => void }) {
     setText("");
     try {
       await c.send(message);
+      setCanReviewWin(true);
     } catch {
       setText(message);
     } finally {
@@ -65,6 +68,7 @@ export function Chat({ onTalk }: { onTalk: () => void }) {
             <MessageActions message={m} />
           </View>
         ))}
+        {canReviewWin && !pending && <ConversationWins onRecorded={onTalk} />}
         {pending && (
           <>
             <View style={[styles.bubble, styles.mine]}>

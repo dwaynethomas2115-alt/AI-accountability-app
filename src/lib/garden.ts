@@ -82,11 +82,15 @@ export function gardenToday(
   now = new Date(),
 ) {
   const today = localDate(now, zone);
-  const dueGoals = goals.filter((goal) => dueOn(goal, now, zone));
   const completed = new Set(
     completions
       .filter((item) => item.local_date === today)
       .map((item) => item.goal_id),
+  );
+  const dueGoals = goals.filter(
+    (goal) =>
+      dueOn(goal, now, zone) ||
+      (goal.status === "active" && completed.has(goal.id)),
   );
   const doneGoalIds = dueGoals
     .filter((goal) => completed.has(goal.id))
@@ -98,4 +102,14 @@ export function gardenToday(
     done: doneGoalIds.length,
     total: dueGoals.length,
   };
+}
+
+/** Interpolate between milestones so every recorded day changes a plant. */
+export function gardenGrowth(count: number): number {
+  const n = Number.isFinite(count) ? Math.max(0, count) : 0;
+  if (n === 0) return 0;
+  if (n < 3) return 0.14 + (n - 1) * 0.09;
+  if (n < 7) return 0.35 + (n - 3) * 0.075;
+  if (n <= 14) return 0.65 + (n - 7) * 0.05;
+  return 1 + 0.16 * (1 - Math.exp(-(n - 14) / 70));
 }
