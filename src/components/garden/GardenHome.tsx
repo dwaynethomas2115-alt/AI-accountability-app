@@ -373,7 +373,7 @@ export function GardenHome({
                       styles.plantTag,
                       {
                         left: `${(PLOTS[i]!.x / 520) * 100}%`,
-                        top: `${((PLOTS[i]!.y + 15) / 510) * 100}%`,
+                        top: `${((PLOTS[i]!.y - 8) / 510) * 100}%`,
                       },
                     ]}
                   >

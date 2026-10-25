@@ -26,15 +26,16 @@ export type GardenPlantVisual = {
   completions: number;
   title: string;
 };
+// Dry banks surround a shared watercourse; the center stays open to the pond.
 export const PLOTS = [
-  { x: 190, y: 245 },
-  { x: 365, y: 267 },
-  { x: 110, y: 293 },
-  { x: 275, y: 300 },
-  { x: 420, y: 292 },
-  { x: 70, y: 253 },
-  { x: 295, y: 224 },
-  { x: 190, y: 319 },
+  { x: 180, y: 238 },
+  { x: 385, y: 215 },
+  { x: 85, y: 265 },
+  { x: 230, y: 317 },
+  { x: 455, y: 283 },
+  { x: 70, y: 235 },
+  { x: 285, y: 210 },
+  { x: 350, y: 321 },
 ];
 const ART = {
   tree: require("../../../assets/garden/oak.png"),
@@ -103,11 +104,16 @@ function GrowingPlant({
 }) {
   const p = PLOTS[index]!;
   const tree = plant.kind === "tree" || plant.kind === "blossom";
-  const size =
-    (tree ? (plant.kind === "tree" ? 230 : 195) : 128) *
-    (index >= 5 ? 0.65 : 1);
+  const depth = index >= 5 ? 0.65 : 1;
+  // Keep even a mature tree inside its bank when a goal owns an edge plot.
+  const size = Math.min(
+    (tree ? (plant.kind === "tree" ? 230 : 195) : 128) * depth,
+    (2 * Math.min(p.x, 520 - p.x)) / 1.16,
+    p.y / (0.94 * 1.16),
+  );
   const sprout = plant.stage < 2;
-  const seedSize = 64 * (index >= 5 ? 0.65 : 1);
+  const youngScale = tree ? gardenGrowth(3) : 0.25 + 0.75 * gardenGrowth(3);
+  const seedSize = Math.min(64 * depth, size * youngScale * 0.9);
   const box = sprout ? seedSize : size;
   const growth = (count: number) =>
     tree ? gardenGrowth(count) : 0.25 + 0.75 * gardenGrowth(count);
@@ -163,6 +169,42 @@ function GrowingPlant({
         />
       )}
     </Animated.View>
+  );
+}
+/** Soft contact shadows join each growing plant to the same sunlit ground. */
+function PlantGround({ plants }: { plants: GardenPlantVisual[] }) {
+  return (
+    <Svg
+      pointerEvents="none"
+      accessible={false}
+      style={StyleSheet.absoluteFill}
+      width="100%"
+      height="100%"
+      viewBox="0 0 520 510"
+    >
+      <Defs>
+        <RadialGradient id="plant-contact">
+          <Stop offset="0" stopColor="#33432B" stopOpacity=".38" />
+          <Stop offset=".55" stopColor="#405336" stopOpacity=".16" />
+          <Stop offset="1" stopColor="#405336" stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      {plants.slice(0, 8).map((plant, index) => {
+        if (!plant.stage) return null;
+        const plot = PLOTS[index]!;
+        const size = Math.min(1.1, 0.3 + gardenGrowth(plant.completions));
+        return (
+          <Ellipse
+            key={plant.id}
+            cx={plot.x + 5}
+            cy={plot.y + 1}
+            rx={36 * size}
+            ry={11 * size}
+            fill="url(#plant-contact)"
+          />
+        );
+      })}
+    </Svg>
   );
 }
 function GrowthLight({
@@ -285,7 +327,7 @@ export const FloatingGarden = React.memo(function FloatingGarden({
   return (
     <View
       accessibilityRole="image"
-      accessibilityLabel={`Your floating garden. ${summary}`}
+      accessibilityLabel={`Your floating garden. ${summary} A pond and stream flow between the grassy banks into a waterfall.`}
       style={[styles.frame, compact && styles.compact]}
     >
       <Svg
@@ -332,6 +374,34 @@ export const FloatingGarden = React.memo(function FloatingGarden({
           fadeDuration={0}
           accessibilityElementsHidden
         />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              opacity: float.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.08, 0.3],
+              }),
+            },
+          ]}
+        >
+          <Svg
+            accessible={false}
+            width="100%"
+            height="100%"
+            viewBox="0 0 520 510"
+          >
+            <Path
+              d="M283 260 Q307 267 331 260 M300 273 Q323 280 349 273 M337 247 Q350 251 363 247"
+              fill="none"
+              stroke="#EDF6E4"
+              strokeWidth={1}
+              strokeLinecap="round"
+            />
+          </Svg>
+        </Animated.View>
+        <PlantGround plants={plants} />
         {plants
           .slice(0, 8)
           .map((plant, index) => ({ plant, index }))
