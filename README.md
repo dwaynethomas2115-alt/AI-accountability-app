@@ -16,8 +16,8 @@ Use Node 24.19 (see `.nvmrc`). Expo SDK 58. Copy `.env.example` to `.env` and fo
 
 ## The simple experience
 
-- An immersive forest fills most of the phone screen, with layered foliage, soft light and water blending into a calm header. Each goal owns a flower or tree that grows from its first sprout with completed days, with new stages at 1, 3, 7 and 14 days. Each newly saved accomplishment shows its growth and a celebration. Paused goals and missed days keep earned growth; reduced-motion settings are respected.
-- Goal labels stay hidden until you tap a plant. A subtle tag anchored to the plant reveals the goal and completed days; tapping the tag tucks it away. Talk and text controls remain within reach over the scene.
+- A continuous garden forest grows upward from the bottom of the screen, with planted beds, soft light and water blending into a calm header. Talk, text and the next check-in sit above the garden. Each goal owns a flower or tree that grows from its first sprout with completed days, with new stages at 1, 3, 7 and 14 days. Care across all goals also fills in the surrounding forest. Each newly saved accomplishment shows its growth and a celebration. Paused goals and missed days keep earned growth; reduced-motion settings are respected.
+- Goal labels stay hidden until you tap a plant. A small garden sign set beside its roots reveals the goal and completed days; tapping the sign tucks it away.
 - After a voice conversation or a successful text message, users can confirm a completed goal and return to their growing garden. Recording the same goal again today never adds duplicate progress. Conversations alone do not award completions.
 - Tap the daily progress circle to mark scheduled goals complete or correct today’s entry. The circle includes extra goals completed on unscheduled days and resets daily; lifetime garden growth is calculated from saved completions.
 - **Preview garden growth** shows five sample stages and **Preview one more day** demonstrates growth between stages, without writing progress or changing the account. **Back to my garden** restores the real view.

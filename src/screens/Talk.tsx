@@ -6,7 +6,6 @@ import {
   PhoneOff,
   MessageCircle,
   Clock3,
-  ArrowUpRight,
 } from "lucide-react-native";
 import { colors, s, Button } from "../components/ui";
 import { ConversationWins } from "../components/garden/ConversationWins";
@@ -42,6 +41,7 @@ export function TalkScreen({
   }, [voice.active, voice.transcripts, voice.error]);
   useEffect(() => {
     setReviewWin(false);
+    setDemoNotice(false);
     wasTalking.current = false;
   }, [c.session?.user.id, c.demo]);
   useEffect(() => {
@@ -82,6 +82,103 @@ export function TalkScreen({
         active={voice.active}
         onPlan={onPlan}
         onShowForest={onShowForest}
+        checkinSummary={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edit my check-in plan"
+            accessibilityHint={
+              next
+                ? `Next check-in ${next.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", timeZone: p.timezone })} at ${formatCheckinTime(p.checkin_time)}`
+                : "Choose a time to talk"
+            }
+            onPress={onPlan}
+            style={styles.checkin}
+          >
+            <Clock3 size={13} strokeWidth={1.5} color={colors.muted} />
+            <Text style={styles.checkinTime} numberOfLines={1}>
+              {next
+                ? `${next.toLocaleDateString(undefined, { weekday: "short", timeZone: p.timezone })} · ${formatCheckinTime(p.checkin_time)}`
+                : "Choose a check-in time"}
+            </Text>
+          </Pressable>
+        }
+        conversationFeedback={
+          voice.audioBlocked ||
+          voice.error ||
+          voice.saveError ||
+          (!voice.supported && !c.demo) ||
+          demoNotice ||
+          voice.pendingPlan ? (
+            <>
+              {voice.audioBlocked && (
+                <Button
+                  title="Tap to hear Kindred"
+                  secondary
+                  onPress={() => void voice.resumeAudio()}
+                />
+              )}
+              <View accessibilityLiveRegion="polite">
+                {voice.error && (
+                  <Text accessibilityRole="alert" style={styles.error}>
+                    {voice.error}
+                  </Text>
+                )}
+                {voice.saveError && (
+                  <Text accessibilityRole="alert" style={styles.error}>
+                    {voice.saveError}
+                  </Text>
+                )}
+                {!voice.supported && !c.demo && (
+                  <Text style={styles.error}>
+                    Voice needs microphone access in a supported browser or the
+                    latest mobile build.
+                  </Text>
+                )}
+                {demoNotice && (
+                  <>
+                    <Text style={styles.demo}>
+                      This is a sample space. Sign in to have a real voice
+                      conversation—your microphone hasn’t been opened.
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Dismiss demo voice notice"
+                      onPress={() => setDemoNotice(false)}
+                      style={styles.typeLink}
+                    >
+                      <Text style={styles.typeText}>Got it</Text>
+                    </Pressable>
+                  </>
+                )}
+              </View>
+              {voice.pendingPlan && (
+                <View style={styles.proposal}>
+                  <Text style={s.eyebrow}>Does this feel right?</Text>
+                  <Text style={styles.proposalText}>
+                    {voice.pendingPlan.summary}
+                  </Text>
+                  <Text style={styles.anytime}>
+                    Say “yes, save that” or tap below.
+                  </Text>
+                  <Button
+                    title="Save this plan"
+                    busy={c.busy}
+                    onPress={() => void voice.confirmPlan()}
+                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={voice.dismissPlan}
+                    style={styles.typeLink}
+                  >
+                    <Text style={styles.typeText}>
+                      Not quite—let’s change it
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </>
+          ) : undefined
+        }
         conversationReview={
           reviewWin && !voice.active && goals.length > 0 ? (
             <ConversationWins
@@ -173,7 +270,7 @@ export function TalkScreen({
             >
               <Mic size={22} color="white" />
               <Text style={styles.talkText}>
-                {ended ? "Talk a little more" : "Let’s talk"}
+                {ended ? "Talk again" : "Let’s talk"}
               </Text>
             </Pressable>
             <Pressable
@@ -187,103 +284,11 @@ export function TalkScreen({
           </>
         )}
       </GardenHome>
-      {voice.audioBlocked && (
-        <Button
-          title="Tap to hear Kindred"
-          secondary
-          onPress={() => void voice.resumeAudio()}
-        />
-      )}
-      <View accessibilityLiveRegion="polite">
-        {voice.error && (
-          <Text accessibilityRole="alert" style={styles.error}>
-            {voice.error}
-          </Text>
-        )}
-        {voice.saveError && (
-          <Text accessibilityRole="alert" style={styles.error}>
-            {voice.saveError}
-          </Text>
-        )}
-        {!voice.supported && !c.demo && (
-          <Text style={styles.error}>
-            Voice needs microphone access in a supported browser or the latest
-            mobile build.
-          </Text>
-        )}
-        {demoNotice && (
-          <Text style={styles.demo}>
-            This is a sample space. Sign in to have a real voice
-            conversation—your microphone hasn’t been opened.
-          </Text>
-        )}
-      </View>
-      {voice.pendingPlan && (
-        <View style={styles.proposal}>
-          <Text style={s.eyebrow}>Does this feel right?</Text>
-          <Text style={styles.proposalText}>{voice.pendingPlan.summary}</Text>
-          <Text style={styles.anytime}>Say “yes, save that” or tap below.</Text>
-          <Button
-            title="Save this plan"
-            busy={c.busy}
-            onPress={() => void voice.confirmPlan()}
-          />
-          <Pressable
-            accessibilityRole="button"
-            onPress={voice.dismissPlan}
-            style={styles.typeLink}
-          >
-            <Text style={styles.typeText}>Not quite—let’s change it</Text>
-          </Pressable>
-        </View>
-      )}
       {!voice.active && (
-        <View style={styles.bottom}>
-          {next ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Edit my check-in plan"
-              onPress={onPlan}
-              style={styles.checkin}
-            >
-              <View style={styles.clock}>
-                <Clock3 size={20} strokeWidth={1.5} color={colors.green} />
-              </View>
-              <View style={{ flex: 1, gap: 5 }}>
-                <Text style={styles.checkinLabel}>OUR NEXT CHECK-IN</Text>
-                <Text style={styles.checkinTime}>
-                  {next.toLocaleDateString(undefined, {
-                    weekday: "long",
-                    month: "short",
-                    day: "numeric",
-                    timeZone: p.timezone,
-                  })}{" "}
-                  · {formatCheckinTime(p.checkin_time)}
-                </Text>
-                <Text style={styles.checkinNote}>
-                  Open Kindred when you’re free.
-                </Text>
-              </View>
-              <ArrowUpRight size={19} color={colors.muted} />
-            </Pressable>
-          ) : (
-            <Pressable
-              accessibilityRole="button"
-              onPress={onPlan}
-              style={styles.checkin}
-            >
-              <Clock3 size={21} color={colors.green} />
-              <Text style={[styles.checkinTime, { flex: 1 }]}>
-                Choose a little time for yourself
-              </Text>
-              <ArrowUpRight size={19} color={colors.muted} />
-            </Pressable>
-          )}
-          <Text style={styles.disclosure}>
-            An AI voice, a space to be yourself. Conversations are transcribed
-            so Kindred can remember where you left off.
-          </Text>
-        </View>
+        <Text style={styles.disclosure}>
+          An AI voice, a space to be yourself. Conversations are transcribed so
+          Kindred can remember where you left off.
+        </Text>
       )}
     </View>
   );
@@ -291,30 +296,29 @@ export function TalkScreen({
 const styles = StyleSheet.create({
   page: {
     width: "100%",
-    maxWidth: 740,
+    maxWidth: 520,
     alignSelf: "center",
     alignItems: "center",
     paddingTop: 0,
-    paddingBottom: 24,
+    paddingBottom: 0,
   },
   talkButton: {
     backgroundColor: colors.green,
-    borderRadius: 34,
-    minHeight: 64,
-    paddingVertical: 18,
-    paddingHorizontal: 35,
+    borderRadius: 27,
+    minHeight: 50,
+    paddingVertical: 12,
+    paddingHorizontal: 15,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 11,
-    minWidth: 260,
-    width: "84%",
-    maxWidth: 340,
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
-    boxShadow: "0 8px 26px rgba(26,67,48,0.22)",
+    boxShadow: "0 4px 14px rgba(26,67,48,0.12)",
   },
-  talkText: { fontSize: 19, color: "#fff", fontWeight: "600" },
+  talkText: { fontSize: 16, color: "#fff", fontWeight: "600" },
   anytime: {
     fontSize: 12,
     lineHeight: 20,
@@ -331,51 +335,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
   },
   textAlternative: {
-    backgroundColor: "rgba(248,245,239,0.9)",
-    borderRadius: 20,
-    minHeight: 44,
-    marginTop: 8,
-    paddingHorizontal: 16,
+    backgroundColor: "rgba(235,239,228,0.8)",
+    borderRadius: 25,
+    minHeight: 50,
+    paddingHorizontal: 14,
   },
-  typeText: { fontSize: 14, color: colors.green },
-  bottom: {
-    width: "100%",
-    maxWidth: 540,
-    gap: 16,
-    marginTop: 14,
-    paddingHorizontal: 24,
-  },
+  typeText: { fontSize: 12, color: colors.green },
   checkin: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 13,
-    backgroundColor: "#FFFEFB",
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: colors.line,
+    gap: 6,
+    minHeight: 44,
   },
-  clock: { backgroundColor: "#EDF1E7", padding: 10, borderRadius: 14 },
-  checkinLabel: {
-    fontSize: 10,
-    letterSpacing: 1.3,
-    fontWeight: "600",
-    color: colors.muted,
-  },
-  checkinTime: {
-    fontSize: 14,
-    color: colors.ink,
-    fontWeight: "600",
-    lineHeight: 21,
-  },
-  checkinNote: { fontSize: 12, color: colors.muted },
+  checkinTime: { fontSize: 11, color: colors.muted, flexShrink: 1 },
   disclosure: {
     fontSize: 11,
     lineHeight: 18,
     color: colors.muted,
     textAlign: "center",
     paddingHorizontal: 20,
-    marginTop: 9,
+    marginVertical: 14,
+    maxWidth: 420,
   },
   listening: { flexDirection: "row", alignItems: "center", gap: 8 },
   dot: { height: 6, width: 6, borderRadius: 3, backgroundColor: colors.green },
@@ -395,9 +375,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   controls: {
+    width: "100%",
     flexDirection: "row",
     gap: 14,
     alignItems: "center",
+    justifyContent: "center",
     marginTop: 6,
   },
   roundControl: {
@@ -411,21 +393,21 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   endButton: {
+    flexShrink: 1,
     minHeight: 54,
     backgroundColor: "#8F5147",
     borderRadius: 27,
-    paddingHorizontal: 23,
+    paddingHorizontal: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
-  endText: { fontSize: 15, fontWeight: "600", color: "white" },
+  endText: { flexShrink: 1, fontSize: 15, fontWeight: "600", color: "white" },
   error: {
     fontSize: 14,
     lineHeight: 22,
     textAlign: "center",
     color: colors.danger,
-    marginTop: 14,
     maxWidth: 360,
   },
   demo: {
@@ -433,17 +415,11 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     color: colors.muted,
     textAlign: "center",
-    marginTop: 14,
     maxWidth: 360,
   },
   proposal: {
-    width: "90%",
-    maxWidth: 500,
-    padding: 20,
-    borderRadius: 20,
-    backgroundColor: colors.sage,
+    width: "100%",
     gap: 12,
-    marginTop: 20,
   },
   proposalText: { fontSize: 16, lineHeight: 25, color: colors.ink },
 });

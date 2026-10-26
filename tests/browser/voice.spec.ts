@@ -303,7 +303,7 @@ test("signed-in voice starts only on request, transcribes, mutes, and releases t
     .getByRole("button", { name: "End conversation", exact: true })
     .click();
   await expect(
-    page.getByText("Talk a little more", { exact: true }),
+    page.getByText("Talk again", { exact: true }),
   ).toBeVisible();
   await expect.poll(() => requests.finishes.length).toBe(1);
   expect(requests.finishes[0]).toMatchObject({

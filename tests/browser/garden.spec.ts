@@ -222,10 +222,11 @@ test("past efforts remain in the garden even when today's circle is empty", asyn
 });
 
 for (const viewport of [
+  { width: 320, height: 740 },
   { width: 390, height: 844 },
   { width: 1280, height: 900 },
 ]) {
-  test(`the forest fills the ${viewport.width}px view while talk and text stay within reach`, async ({
+  test(`the forest grows from the bottom of the ${viewport.width}px view with controls above it`, async ({
     page,
   }) => {
     await page.setViewportSize(viewport);
@@ -242,17 +243,41 @@ for (const viewport of [
       );
     });
     expect(coverage).toBeGreaterThanOrEqual(0.75);
+    const forestBounds = await forest.boundingBox();
+    expect(forestBounds).not.toBeNull();
+    // The scene reaches the bottom instead of ending at a lower button dock.
+    expect(
+      Math.abs(forestBounds!.y + forestBounds!.height - viewport.height),
+    ).toBeLessThanOrEqual(2);
+    const controls = page.getByTestId("forest-controls");
+    const controlsBounds = await controls.boundingBox();
+    expect(controlsBounds).not.toBeNull();
+    expect(controlsBounds!.y + controlsBounds!.height).toBeLessThan(
+      viewport.height * 0.34,
+    );
     await expect(
       page.getByRole("button", { name: "Let’s talk", exact: true }),
     ).toBeInViewport({ ratio: 1 });
     await expect(
       page.getByRole("button", { name: "Type instead", exact: true }),
     ).toBeInViewport({ ratio: 1 });
+    await expect(
+      page.getByRole("button", { name: "Edit my check-in plan", exact: true }),
+    ).toBeInViewport({ ratio: 1 });
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
+    await page.getByRole("button", { name: "Let’s talk", exact: true }).click();
+    // Voice feedback must appear beside the controls, without a scroll below
+    // the full-screen forest to discover why the microphone did not open.
+    await expect(page.getByTestId("conversation-feedback")).toBeInViewport({
+      ratio: 1,
+    });
+    await expect(
+      page.getByText(/This is a sample space\. Sign in to have a real voice/),
+    ).toBeVisible();
   });
 }
 
@@ -289,6 +314,8 @@ test("plant names appear only on selection and preview selections never change s
   expect(labelBounds).not.toBeNull();
   expect(labelBounds!.width).toBeLessThanOrEqual(150);
   expect(labelBounds!.height).toBeLessThanOrEqual(75);
+  // The small sign lives down in the garden, not in the header or button row.
+  expect(labelBounds!.y).toBeGreaterThan(page.viewportSize()!.height * 0.45);
   await expect(label).toBeInViewport({ ratio: 1 });
   await page
     .getByRole("button", { name: "About Learning", exact: true })

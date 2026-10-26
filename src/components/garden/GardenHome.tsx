@@ -89,7 +89,7 @@ function ProgressCircle({
       onPress={onPress}
       style={styles.ring}
     >
-      <Svg width={84} height={84} viewBox="0 0 84 84" accessible={false}>
+      <Svg width={60} height={60} viewBox="0 0 84 84" accessible={false}>
         <Circle
           cx={42}
           cy={42}
@@ -127,12 +127,16 @@ export function GardenHome({
   onPlan,
   conversationReview,
   onShowForest,
+  checkinSummary,
+  conversationFeedback,
 }: {
   children: React.ReactNode;
   active: boolean;
   onPlan: () => void;
   conversationReview?: React.ReactNode;
   onShowForest?: () => void;
+  checkinSummary?: React.ReactNode;
+  conversationFeedback?: React.ReactNode;
 }) {
   const c = useCompanion();
   const window = useWindowDimensions();
@@ -152,6 +156,8 @@ export function GardenHome({
   const [details, setDetails] = useState(false);
   const [plotPage, setPlotPage] = useState(0);
   const [notice, setNotice] = useState("");
+  const [controlsBottom, setControlsBottom] = useState(114);
+  const feedbackTop = Math.max(active ? 20 : 166, controlsBottom + 12);
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
@@ -266,6 +272,7 @@ export function GardenHome({
           height={heroHeight}
           compact={active}
           plants={visuals}
+          totalCare={display.reduce((sum, plant) => sum + plant.completions, 0)}
           win={win}
           selectedPlantId={selectedPlantId}
           onPlantPress={selectPlant}
@@ -273,11 +280,6 @@ export function GardenHome({
         {!active && (
           <View pointerEvents="box-none" style={styles.top}>
             <View pointerEvents="none" style={styles.intro}>
-              <Text style={styles.eyebrow}>
-                {previewing
-                  ? "A GLIMPSE OF YOUR GARDEN"
-                  : "A LITTLE CARE, EVERY DAY"}
-              </Text>
               <Text style={styles.title}>
                 {previewing
                   ? PREVIEWS[preview!]
@@ -285,12 +287,12 @@ export function GardenHome({
                     ? "Look at you grow."
                     : "Room to grow."}
               </Text>
-              <Text style={styles.hint}>
+              <Text style={styles.hint} numberOfLines={1}>
                 {previewing
-                  ? "Imagine what a little care can grow."
+                  ? "A little care, a growing world."
                   : plants.some((plant) => plant.stage > 0)
-                    ? "Every small effort stays with you."
-                    : "Your first small step plants a seed."}
+                    ? "Your effort takes root."
+                    : "Begin with one small step."}
               </Text>
             </View>
             <ProgressCircle
@@ -304,69 +306,103 @@ export function GardenHome({
             />
           </View>
         )}
-        <View
-          pointerEvents="none"
-          style={[styles.bottomFade, active && { height: 350 }]}
-        >
-          <Svg
-            width="100%"
-            height="100%"
-            preserveAspectRatio="none"
-            viewBox="0 0 100 100"
-          >
-            <Defs>
-              <LinearGradient
-                id="forest-controls-fade"
-                x1="0"
-                y1="0"
-                x2="0"
-                y2="1"
-              >
-                <Stop
-                  offset="0"
-                  stopColor={colors.background}
-                  stopOpacity="0"
-                />
-                <Stop
-                  offset=".5"
-                  stopColor={colors.background}
-                  stopOpacity={active ? ".78" : ".22"}
-                />
-                <Stop
-                  offset="1"
-                  stopColor={colors.background}
-                  stopOpacity={active ? ".98" : ".65"}
-                />
-              </LinearGradient>
-            </Defs>
-            <Rect width={100} height={100} fill="url(#forest-controls-fade)" />
-          </Svg>
-        </View>
-        <View style={[styles.controlsDock, active && styles.activeDock]}>
-          {children}
-        </View>
-        {win && !active && !details && !conversationReview && (
-          <View accessibilityLiveRegion="polite" style={styles.winCard}>
-            <View style={{ flex: 1, gap: 5 }}>
-              <Text style={styles.eyebrow}>A SMALL WIN, A LITTLE GROWTH</Text>
-              <Text style={styles.winTitle}>{win.title} grew a little.</Text>
-              <Text style={styles.hint}>
-                +1 completed day · {win.after}{" "}
-                {win.after === 1 ? "day" : "days"} of care. Your progress is
-                saved.
-              </Text>
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Keep growing"
-              onPress={c.dismissGardenWin}
-              style={styles.winDismiss}
+        {active && (
+          <View pointerEvents="none" style={styles.activeFade}>
+            <Svg
+              width="100%"
+              height="100%"
+              preserveAspectRatio="none"
+              viewBox="0 0 100 100"
             >
-              <Check size={19} color={colors.green} />
-              <Text style={styles.winLink}>Keep growing</Text>
-            </Pressable>
+              <Defs>
+                <LinearGradient
+                  id="forest-controls-fade"
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <Stop
+                    offset="0"
+                    stopColor={colors.background}
+                    stopOpacity="1"
+                  />
+                  <Stop
+                    offset=".65"
+                    stopColor={colors.background}
+                    stopOpacity=".96"
+                  />
+                  <Stop
+                    offset="1"
+                    stopColor={colors.background}
+                    stopOpacity="0"
+                  />
+                </LinearGradient>
+              </Defs>
+              <Rect
+                width={100}
+                height={100}
+                fill="url(#forest-controls-fade)"
+              />
+            </Svg>
           </View>
         )}
+        <View
+          testID="forest-controls"
+          style={[styles.controlsDock, active && styles.activeDock]}
+          onLayout={({ nativeEvent: { layout } }) =>
+            setControlsBottom(layout.y + layout.height)
+          }
+        >
+          {children}
+        </View>
+        {!active && (
+          <View style={styles.gardenTools}>
+            <View style={{ flex: 1 }}>{checkinSummary}</View>
+            {!previewing && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Preview garden growth"
+                onPress={() => {
+                  onShowForest?.();
+                  setPreview(0);
+                  setDetails(false);
+                  setPlotPage(0);
+                }}
+                style={styles.previewLink}
+              >
+                <FlaskConical size={13} color={colors.muted} />
+                <Text style={styles.previewText}>Preview growth</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+        {win &&
+          !active &&
+          !details &&
+          !conversationReview &&
+          !conversationFeedback && (
+            <View accessibilityLiveRegion="polite" style={styles.winCard}>
+              <View style={{ flex: 1, gap: 5 }}>
+                <Text style={styles.eyebrow}>A SMALL WIN, A LITTLE GROWTH</Text>
+                <Text style={styles.winTitle}>{win.title} grew a little.</Text>
+                <Text style={styles.hint}>
+                  +1 completed day · {win.after}{" "}
+                  {win.after === 1 ? "day" : "days"} of care. Your progress is
+                  saved.
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Keep growing"
+                onPress={c.dismissGardenWin}
+                style={styles.winDismiss}
+              >
+                <Check size={19} color={colors.green} />
+                <Text style={styles.winLink}>Keep growing</Text>
+              </Pressable>
+            </View>
+          )}
         {details && !active && (
           <View style={styles.details} accessibilityViewIsModal>
             <View style={styles.detailHeading}>
@@ -447,7 +483,7 @@ export function GardenHome({
             </ScrollView>
           </View>
         )}
-        {!!conversationReview && !active && (
+        {!!conversationReview && !conversationFeedback && !active && (
           <View style={styles.reviewOverlay}>
             <ScrollView
               nestedScrollEnabled
@@ -455,6 +491,29 @@ export function GardenHome({
               showsVerticalScrollIndicator={false}
             >
               {conversationReview}
+            </ScrollView>
+          </View>
+        )}
+        {!!conversationFeedback && !details && !previewing && (
+          <View
+            testID="conversation-feedback"
+            style={[
+              styles.feedbackOverlay,
+              {
+                top: feedbackTop,
+                maxHeight: Math.max(80, heroHeight - feedbackTop - 20),
+              },
+            ]}
+          >
+            <ScrollView
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: Math.max(80, heroHeight - feedbackTop - 20) }}
+              contentContainerStyle={styles.feedbackContent}
+            >
+              <View style={styles.feedbackCard}>{conversationFeedback}</View>
+              {!active && conversationReview}
             </ScrollView>
           </View>
         )}
@@ -555,22 +614,6 @@ export function GardenHome({
           </Pressable>
         </View>
       )}
-      {!active && !previewing && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Preview garden growth"
-          onPress={() => {
-            onShowForest?.();
-            setPreview(0);
-            setDetails(false);
-            setPlotPage(0);
-          }}
-          style={styles.previewLink}
-        >
-          <FlaskConical size={14} color={colors.muted} />
-          <Text style={styles.previewText}>Preview garden growth</Text>
-        </Pressable>
-      )}
     </View>
   );
 }
@@ -584,14 +627,14 @@ const styles = StyleSheet.create({
   },
   top: {
     position: "absolute",
-    top: 12,
+    top: 0,
     left: 24,
     right: 24,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
-  intro: { flex: 1, gap: 6 },
+  intro: { flex: 1, gap: 4 },
   eyebrow: {
     fontSize: 8,
     fontWeight: "600",
@@ -599,44 +642,55 @@ const styles = StyleSheet.create({
     color: colors.green,
   },
   title: {
-    fontSize: 27,
-    lineHeight: 34,
+    fontSize: 24,
+    lineHeight: 29,
     letterSpacing: -0.8,
     color: colors.ink,
     fontWeight: "500",
   },
   hint: { fontSize: 12, lineHeight: 19, color: colors.muted },
-  ring: { width: 76, height: 76, transform: [{ scale: 0.9 }] },
+  ring: { width: 60, height: 60 },
   ringText: {
     position: "absolute",
-    width: 84,
-    height: 84,
+    width: 60,
+    height: 60,
     top: 0,
     left: 0,
     alignItems: "center",
     justifyContent: "center",
     gap: 1,
   },
-  ratio: { fontSize: 23, fontWeight: "600", color: colors.green },
-  ringLabel: { fontSize: 10, color: colors.muted },
-  bottomFade: {
+  ratio: { fontSize: 18, fontWeight: "600", color: colors.green },
+  ringLabel: { fontSize: 8, color: colors.muted },
+  activeFade: {
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: 0,
-    height: 170,
+    top: 0,
+    height: 350,
   },
   controlsDock: {
     position: "absolute",
     left: 24,
     right: 24,
-    bottom: 15,
+    top: 64,
     alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
   },
-  activeDock: { left: 28, right: 28, bottom: 28 },
+  activeDock: { left: 28, right: 28, top: 20, flexDirection: "column", gap: 0 },
+  gardenTools: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    top: 116,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   winCard: {
     position: "absolute",
-    top: 114,
+    top: 166,
     left: 22,
     right: 22,
     backgroundColor: "rgba(246,249,235,0.96)",
@@ -665,8 +719,8 @@ const styles = StyleSheet.create({
   winLink: { color: colors.green, fontWeight: "600", fontSize: 9 },
   details: {
     position: "absolute",
-    top: 110,
-    bottom: 178,
+    top: 166,
+    bottom: 20,
     left: 20,
     right: 20,
     borderRadius: 24,
@@ -717,10 +771,26 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 13, lineHeight: 20 },
   reviewOverlay: {
     position: "absolute",
-    top: 110,
-    bottom: 178,
+    top: 166,
+    bottom: 20,
     left: 20,
     right: 20,
+  },
+  feedbackOverlay: {
+    position: "absolute",
+    left: 20,
+    right: 20,
+  },
+  feedbackContent: { gap: 12 },
+  feedbackCard: {
+    backgroundColor: "rgba(255,252,243,0.98)",
+    borderColor: "#E2DFCF",
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 18,
+    gap: 14,
+    alignItems: "center",
+    boxShadow: "0 7px 24px rgba(37,58,40,0.10)",
   },
   pageControls: { flexDirection: "row", alignItems: "center", gap: 8 },
   previewLink: {
@@ -728,14 +798,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 2,
+    paddingLeft: 4,
   },
-  previewText: { fontSize: 11, color: colors.muted },
+  previewText: { fontSize: 10, color: colors.muted },
   previewPanel: {
     position: "absolute",
     left: 18,
     right: 18,
-    bottom: 166,
+    top: 166,
     padding: 13,
     borderRadius: 22,
     backgroundColor: "rgba(248,250,240,0.96)",

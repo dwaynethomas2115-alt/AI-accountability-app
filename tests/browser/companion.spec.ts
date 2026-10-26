@@ -19,7 +19,12 @@ test("simple mobile plan persists, voice stays manual, and text activities still
   await expect(
     page.getByRole("button", { name: "Let’s talk", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("Open Kindred when you’re free.")).toBeVisible();
+  const checkin = page.getByRole("button", {
+    name: "Edit my check-in plan",
+    exact: true,
+  });
+  await expect(checkin).toContainText("7:30 PM");
+  await expect(checkin).toBeInViewport({ ratio: 1 });
   await page.getByRole("button", { name: "Let’s talk", exact: true }).click();
   await expect(
     page.getByText(/your microphone hasn’t been opened/),
