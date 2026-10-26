@@ -121,7 +121,7 @@ for (const serverCap of [1000, 333]) {
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(
       page.getByRole("img", {
-        name: /Your floating garden\. .*My first goal: fully grown plant/,
+        name: /Your growing forest\. .*My first goal: fully grown plant/,
       }),
     ).toBeVisible();
     await expect(

@@ -34,29 +34,27 @@ const undo = (page: Page, title: string) =>
 const snapshot = (page: Page) =>
   page.evaluate(() => JSON.parse(localStorage.getItem("kindred-demo") || "{}"));
 
-async function artworkFitsGarden(page: Page) {
-  const garden = page.getByRole("img", { name: /Your floating garden/ });
+async function artworkFitsForest(page: Page) {
+  const forest = page.getByRole("img", { name: /^Your growing forest\./ });
   await expect
     .poll(() =>
-      garden.evaluate((root) => {
+      forest.evaluate((root) => {
         const frame = root.getBoundingClientRect();
         const images = [...root.querySelectorAll("img")];
+        // Trees and foreground leaves intentionally extend into cropped edges.
+        // The scene itself must fit the screen and every displayed asset must load.
         return (
+          frame.width > 0 &&
+          frame.height > 0 &&
+          frame.left >= -1 &&
+          frame.right <= window.innerWidth + 1 &&
           images.length > 0 &&
-          images.every((image) => {
-            const bounds = image.getBoundingClientRect();
-            return (
+          images.every(
+            (image) =>
               image.complete &&
               image.naturalWidth > 0 &&
-              bounds.width > 0 &&
-              bounds.width <= frame.width + 1 &&
-              bounds.height <= frame.height + 1 &&
-              bounds.left >= frame.left - 8 &&
-              bounds.right <= frame.right + 8 &&
-              bounds.top >= frame.top - 8 &&
-              bounds.bottom <= frame.bottom + 8
-            );
-          })
+              image.getBoundingClientRect().width > 0,
+          )
         );
       }),
     )
@@ -71,11 +69,11 @@ test("a new garden starts empty and every preview stage leaves saved progress un
   page.on("pageerror", (error) => errors.push(error.message));
   await makePlan(page);
   await expect(ring(page)).toContainText(/0\s*\/\s*2/);
-  await artworkFitsGarden(page);
+  await artworkFitsForest(page);
   const original = await snapshot(page);
   expect(original.completions).toEqual([]);
   await expect(
-    page.getByRole("img", { name: /Your floating garden\. Just grass/ }),
+    page.getByRole("img", { name: /Your growing forest\. Just grass/ }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Preview garden growth", exact: true })
@@ -100,10 +98,10 @@ test("a new garden starts empty and every preview stage leaves saved progress un
     ][index];
     await expect(
       page.getByRole("img", {
-        name: new RegExp(`Your floating garden\\. .*${stage}`),
+        name: new RegExp(`Your growing forest\\. .*${stage}`),
       }),
     ).toBeVisible();
-    await artworkFitsGarden(page);
+    await artworkFitsForest(page);
     expect(await snapshot(page)).toEqual(original);
   }
   await page
@@ -221,4 +219,93 @@ test("past efforts remain in the garden even when today's circle is empty", asyn
   await expect(mark(page, "Walk outside")).toBeVisible();
   await expect(mark(page, "Read ten minutes")).toBeVisible();
   expect((await snapshot(page)).completions).toHaveLength(14);
+});
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 900 },
+]) {
+  test(`the forest fills the ${viewport.width}px view while talk and text stay within reach`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await makePlan(page);
+    const forest = page.getByRole("img", { name: /^Your growing forest\./ });
+    await artworkFitsForest(page);
+    const coverage = await forest.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return (
+        Math.max(
+          0,
+          Math.min(box.bottom, window.innerHeight) - Math.max(box.top, 0),
+        ) / window.innerHeight
+      );
+    });
+    expect(coverage).toBeGreaterThanOrEqual(0.75);
+    await expect(
+      page.getByRole("button", { name: "Let’s talk", exact: true }),
+    ).toBeInViewport({ ratio: 1 });
+    await expect(
+      page.getByRole("button", { name: "Type instead", exact: true }),
+    ).toBeInViewport({ ratio: 1 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  });
+}
+
+test("plant names appear only on selection and preview selections never change saved goals", async ({
+  page,
+}) => {
+  await makePlan(page);
+  const original = await snapshot(page);
+  await page
+    .getByRole("button", { name: "Preview garden growth", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Full garden", exact: true }).click();
+  await artworkFitsForest(page);
+  for (const name of [
+    "Movement",
+    "Learning",
+    "Rest",
+    "Creativity",
+    "Connection",
+  ]) {
+    await expect(page.getByText(name, { exact: true })).toBeHidden();
+    await expect(
+      page.getByRole("button", { name: `About ${name}`, exact: true }),
+    ).toBeVisible();
+  }
+  await page
+    .getByRole("button", { name: "About Movement", exact: true })
+    .click();
+  await expect(page.getByText("Movement", { exact: true })).toBeVisible();
+  await expect(page.getByText("Learning", { exact: true })).toBeHidden();
+  const label = page.getByTestId("forest-scene").getByTestId("plant-details");
+  await expect(label).toContainText("14 days of care");
+  const labelBounds = await label.boundingBox();
+  expect(labelBounds).not.toBeNull();
+  expect(labelBounds!.width).toBeLessThanOrEqual(150);
+  expect(labelBounds!.height).toBeLessThanOrEqual(75);
+  await expect(label).toBeInViewport({ ratio: 1 });
+  await page
+    .getByRole("button", { name: "About Learning", exact: true })
+    .click();
+  await expect(page.getByText("Movement", { exact: true })).toBeHidden();
+  await expect(page.getByText("Learning", { exact: true })).toBeVisible();
+  await page
+    .getByRole("button", { name: "Close plant details", exact: true })
+    .click();
+  await expect(page.getByText("Learning", { exact: true })).toBeHidden();
+  expect(await snapshot(page)).toEqual(original);
+  await page
+    .getByRole("button", { name: "Back to my garden", exact: true })
+    .click();
+  await expect(page.getByText("Movement", { exact: true })).toBeHidden();
+  await expect(
+    page.getByRole("button", { name: "Close plant details", exact: true }),
+  ).toBeHidden();
+  expect(await snapshot(page)).toEqual(original);
 });

@@ -16,7 +16,8 @@ Use Node 24.19 (see `.nvmrc`). Expo SDK 58. Copy `.env.example` to `.env` and fo
 
 ## The simple experience
 
-- A detailed floating garden begins with grass around a clear pond, stone-lined stream and waterfall. Trees and flowers share the mossy banks as they grow. Each goal owns a flower or tree that grows with every completed day, with new stages at 1, 3, 7 and 14 days. Each newly saved accomplishment shows its growth and a celebration. Paused goals and missed days keep earned growth; reduced-motion settings are respected.
+- An immersive forest fills most of the phone screen, with layered foliage, soft light and water blending into a calm header. Each goal owns a flower or tree that grows from its first sprout with completed days, with new stages at 1, 3, 7 and 14 days. Each newly saved accomplishment shows its growth and a celebration. Paused goals and missed days keep earned growth; reduced-motion settings are respected.
+- Goal labels stay hidden until you tap a plant. A subtle tag anchored to the plant reveals the goal and completed days; tapping the tag tucks it away. Talk and text controls remain within reach over the scene.
 - After a voice conversation or a successful text message, users can confirm a completed goal and return to their growing garden. Recording the same goal again today never adds duplicate progress. Conversations alone do not award completions.
 - Tap the daily progress circle to mark scheduled goals complete or correct today’s entry. The circle includes extra goals completed on unscheduled days and resets daily; lifetime garden growth is calculated from saved completions.
 - **Preview garden growth** shows five sample stages and **Preview one more day** demonstrates growth between stages, without writing progress or changing the account. **Back to my garden** restores the real view.
@@ -36,7 +37,7 @@ The voice backend needs a one-time Supabase update: **[activate voice](docs/VOIC
 ```text
 App.tsx                         Simple navigation, auth shell, voice lifecycle
 src/screens/                    Talk, plan, messages, account, auth and saved calendar
-src/components/garden/          Floating garden illustration, goal actions and preview
+src/components/garden/          Forest scene, plant details, goal actions and preview
 src/lib/garden.ts               Stable goal plants and timezone-aware growth rules
 src/hooks/useVoiceConversation.ts  React binding for the voice session controller
 src/lib/voice/                  Browser/native WebRTC, session events and confirmation

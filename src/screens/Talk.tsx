@@ -19,10 +19,12 @@ export function TalkScreen({
   voice,
   onMessages,
   onPlan,
+  onShowForest,
 }: {
   voice: Voice;
   onMessages: () => void;
   onPlan: () => void;
+  onShowForest?: () => void;
 }) {
   const c = useCompanion();
   const [now, setNow] = useState(new Date());
@@ -76,7 +78,20 @@ export function TalkScreen({
   const seconds = voice.elapsedSeconds % 60;
   return (
     <View style={styles.page}>
-      <GardenHome active={voice.active} onPlan={onPlan}>
+      <GardenHome
+        active={voice.active}
+        onPlan={onPlan}
+        onShowForest={onShowForest}
+        conversationReview={
+          reviewWin && !voice.active && goals.length > 0 ? (
+            <ConversationWins
+              initiallyOpen
+              onRecorded={() => setReviewWin(false)}
+              onDismiss={() => setReviewWin(false)}
+            />
+          ) : undefined
+        }
+      >
         {voice.active ? (
           <>
             <View style={styles.listening}>
@@ -138,13 +153,6 @@ export function TalkScreen({
           </>
         ) : (
           <>
-            {reviewWin && (
-              <ConversationWins
-                initiallyOpen
-                onRecorded={() => setReviewWin(false)}
-                onDismiss={() => setReviewWin(false)}
-              />
-            )}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Let’s talk"
@@ -168,13 +176,10 @@ export function TalkScreen({
                 {ended ? "Talk a little more" : "Let’s talk"}
               </Text>
             </Pressable>
-            <Text style={styles.anytime}>
-              Ready whenever you are. Talk anytime.
-            </Text>
             <Pressable
               accessibilityRole="button"
               onPress={onMessages}
-              style={styles.typeLink}
+              style={[styles.typeLink, styles.textAlternative]}
             >
               <MessageCircle size={17} color={colors.muted} />
               <Text style={styles.typeText}>Type instead</Text>
@@ -286,7 +291,7 @@ export function TalkScreen({
 const styles = StyleSheet.create({
   page: {
     width: "100%",
-    maxWidth: 520,
+    maxWidth: 740,
     alignSelf: "center",
     alignItems: "center",
     paddingTop: 0,
@@ -294,17 +299,22 @@ const styles = StyleSheet.create({
   },
   talkButton: {
     backgroundColor: colors.green,
-    borderRadius: 30,
-    minHeight: 58,
-    paddingVertical: 17,
+    borderRadius: 34,
+    minHeight: 64,
+    paddingVertical: 18,
     paddingHorizontal: 35,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 11,
-    minWidth: 226,
+    minWidth: 260,
+    width: "84%",
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    boxShadow: "0 8px 26px rgba(26,67,48,0.22)",
   },
-  talkText: { fontSize: 18, color: "#fff", fontWeight: "600" },
+  talkText: { fontSize: 19, color: "#fff", fontWeight: "600" },
   anytime: {
     fontSize: 12,
     lineHeight: 20,
@@ -320,8 +330,21 @@ const styles = StyleSheet.create({
     minHeight: 46,
     paddingHorizontal: 15,
   },
-  typeText: { fontSize: 14, color: colors.muted },
-  bottom: { width: "100%", gap: 16, marginTop: 24 },
+  textAlternative: {
+    backgroundColor: "rgba(248,245,239,0.9)",
+    borderRadius: 20,
+    minHeight: 44,
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+  typeText: { fontSize: 14, color: colors.green },
+  bottom: {
+    width: "100%",
+    maxWidth: 540,
+    gap: 16,
+    marginTop: 14,
+    paddingHorizontal: 24,
+  },
   checkin: {
     flexDirection: "row",
     alignItems: "center",
@@ -414,7 +437,8 @@ const styles = StyleSheet.create({
     maxWidth: 360,
   },
   proposal: {
-    width: "100%",
+    width: "90%",
+    maxWidth: 500,
     padding: 20,
     borderRadius: 20,
     backgroundColor: colors.sage,

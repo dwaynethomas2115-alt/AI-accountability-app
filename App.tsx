@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,7 @@ type Screen = "home" | "talk" | "plan" | "messages" | "privacy" | "calendar";
 function Shell() {
   const c = useCompanion();
   const [screen, setScreen] = useState<Screen>("home");
+  const contentScroll = useRef<React.ElementRef<typeof ScrollView>>(null);
   const signed = c.demo || !!c.session;
   const voice = useVoiceConversation({
     enabled: !!c.session && !c.demo,
@@ -101,6 +102,9 @@ function Shell() {
       voice={voice}
       onMessages={() => navigate("messages")}
       onPlan={() => navigate("plan")}
+      onShowForest={() =>
+        contentScroll.current?.scrollTo({ y: 0, animated: false })
+      }
     />
   );
   return (
@@ -110,7 +114,7 @@ function Shell() {
         style={styles.fill}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, signed && isTalk && styles.forestHeader]}>
           <View style={styles.headerInner}>
             {signed && !isTalk && screen !== "home" ? (
               <Pressable
@@ -177,11 +181,20 @@ function Shell() {
           <Chat onTalk={() => navigate("talk")} />
         ) : (
           <ScrollView
+            ref={contentScroll}
             key={signed ? current : "auth"}
             keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={!(signed && isTalk)}
+            contentContainerStyle={[
+              styles.content,
+              signed && isTalk && styles.forestContent,
+            ]}
           >
-            <View style={styles.column}>{content}</View>
+            <View
+              style={[styles.column, signed && isTalk && styles.forestColumn]}
+            >
+              {content}
+            </View>
           </ScrollView>
         )}
       </KeyboardAvoidingView>
@@ -248,6 +261,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   column: { width: "100%", maxWidth: 680 },
+  forestColumn: { maxWidth: 740 },
+  forestContent: { paddingHorizontal: 0, paddingVertical: 0 },
+  forestHeader: { borderBottomWidth: 0 },
   error: {
     backgroundColor: "#F6E9DE",
     paddingLeft: 20,

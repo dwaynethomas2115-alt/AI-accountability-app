@@ -1,6 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, Pressable, StyleSheet, ScrollView } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import {
+  View,
+  Text,
+  Pressable,
+  StyleSheet,
+  ScrollView,
+  useWindowDimensions,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Stop,
+  Rect,
+} from "react-native-svg";
 import {
   Check,
   ChevronLeft,
@@ -9,7 +23,7 @@ import {
   X,
 } from "lucide-react-native";
 import { colors, Button } from "../ui";
-import { FloatingGarden, PLOTS } from "./FloatingGarden";
+import { ForestGarden } from "./ForestGarden";
 import { useCompanion } from "../../state/CompanionProvider";
 import {
   gardenPlants,
@@ -111,12 +125,23 @@ export function GardenHome({
   children,
   active,
   onPlan,
+  conversationReview,
+  onShowForest,
 }: {
   children: React.ReactNode;
   active: boolean;
   onPlan: () => void;
+  conversationReview?: React.ReactNode;
+  onShowForest?: () => void;
 }) {
   const c = useCompanion();
+  const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const heroHeight = Math.max(
+    440,
+    window.height - 66 - insets.top - insets.bottom,
+  );
+  const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
   const [now, setNow] = useState(new Date());
   const [preview, setPreviewStage] = useState<GardenStage | null>(null);
   const [previewDays, setPreviewDays] = useState(0);
@@ -136,6 +161,7 @@ export function GardenHome({
     setDetails(false);
     setNotice("");
     setPlotPage(0);
+    setSelectedPlantId(null);
   }, [c.session?.user.id, c.demo]);
   useEffect(() => {
     if (active) {
@@ -209,6 +235,7 @@ export function GardenHome({
     if (!c.latestGardenWin || active) return;
     setPreview(null);
     setDetails(false);
+    setSelectedPlantId(null);
     const position = plants.findIndex(
       (p) => p.goal.id === c.latestGardenWin!.goalId,
     );
@@ -223,168 +250,280 @@ export function GardenHome({
       setNotice((e as Error).message);
     }
   }
+  const selected = visible.find((plant) => plant.goal.id === selectedPlantId);
+  useEffect(() => {
+    setSelectedPlantId(null);
+  }, [preview, previewDays, page, active]);
+  function selectPlant(id: string) {
+    if (active || details || conversationReview) return;
+    setSelectedPlantId((current) => (id && id !== current ? id : null));
+    if (id) c.dismissGardenWin();
+  }
   return (
     <View style={styles.wrap}>
-      {!active && (
-        <View style={styles.top}>
-          <View style={styles.intro}>
-            <Text style={styles.eyebrow}>
-              {previewing ? "GARDEN PREVIEW" : "A LITTLE CARE, EVERY DAY"}
-            </Text>
-            <Text style={styles.title}>
-              {previewing
-                ? PREVIEWS[preview!]
-                : today.done === today.total && today.total > 0
-                  ? "Look at you grow."
-                  : "Room to grow."}
-            </Text>
-            <Text style={styles.hint}>
-              {previewing
-                ? "Sample garden · your progress stays as it is"
-                : plants.some((p) => p.stage > 0)
-                  ? "Every small effort stays with you."
-                  : "Your first small step plants a seed."}
-            </Text>
+      <View style={[styles.hero, { height: heroHeight }]}>
+        <ForestGarden
+          height={heroHeight}
+          compact={active}
+          plants={visuals}
+          win={win}
+          selectedPlantId={selectedPlantId}
+          onPlantPress={selectPlant}
+        />
+        {!active && (
+          <View pointerEvents="box-none" style={styles.top}>
+            <View pointerEvents="none" style={styles.intro}>
+              <Text style={styles.eyebrow}>
+                {previewing
+                  ? "A GLIMPSE OF YOUR GARDEN"
+                  : "A LITTLE CARE, EVERY DAY"}
+              </Text>
+              <Text style={styles.title}>
+                {previewing
+                  ? PREVIEWS[preview!]
+                  : today.done === today.total && today.total > 0
+                    ? "Look at you grow."
+                    : "Room to grow."}
+              </Text>
+              <Text style={styles.hint}>
+                {previewing
+                  ? "Imagine what a little care can grow."
+                  : plants.some((plant) => plant.stage > 0)
+                    ? "Every small effort stays with you."
+                    : "Your first small step plants a seed."}
+              </Text>
+            </View>
+            <ProgressCircle
+              done={shownDone}
+              total={shownTotal}
+              preview={previewing}
+              onPress={() => {
+                setDetails(!details);
+                setSelectedPlantId(null);
+              }}
+            />
           </View>
-          <ProgressCircle
-            done={shownDone}
-            total={shownTotal}
-            preview={previewing}
-            onPress={() => {
-              if (previewing) return;
-              setDetails(!details);
-            }}
-          />
-        </View>
-      )}
-      {win && !active && (
-        <View accessibilityLiveRegion="polite" style={styles.winCard}>
-          <Text style={styles.eyebrow}>A SMALL WIN, A LITTLE GROWTH</Text>
-          <Text style={styles.winTitle}>{win.title} grew a little.</Text>
-          <Text style={styles.hint}>
-            +1 completed day · {win.after} {win.after === 1 ? "day" : "days"} of
-            care. Your progress is saved.
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Keep growing"
-            onPress={c.dismissGardenWin}
-            style={styles.winDismiss}
+        )}
+        <View
+          pointerEvents="none"
+          style={[styles.bottomFade, active && { height: 350 }]}
+        >
+          <Svg
+            width="100%"
+            height="100%"
+            preserveAspectRatio="none"
+            viewBox="0 0 100 100"
           >
-            <Text style={styles.winLink}>Keep growing</Text>
-            <Check size={16} color={colors.green} />
-          </Pressable>
+            <Defs>
+              <LinearGradient
+                id="forest-controls-fade"
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <Stop
+                  offset="0"
+                  stopColor={colors.background}
+                  stopOpacity="0"
+                />
+                <Stop
+                  offset=".5"
+                  stopColor={colors.background}
+                  stopOpacity={active ? ".78" : ".22"}
+                />
+                <Stop
+                  offset="1"
+                  stopColor={colors.background}
+                  stopOpacity={active ? ".98" : ".65"}
+                />
+              </LinearGradient>
+            </Defs>
+            <Rect width={100} height={100} fill="url(#forest-controls-fade)" />
+          </Svg>
         </View>
-      )}
-      {details && !active ? (
-        <View style={styles.details}>
-          <View style={styles.detailHeading}>
-            <Text accessibilityRole="header" style={styles.sectionTitle}>
-              Your garden
-            </Text>
+        <View style={[styles.controlsDock, active && styles.activeDock]}>
+          {children}
+        </View>
+        {win && !active && !details && !conversationReview && (
+          <View accessibilityLiveRegion="polite" style={styles.winCard}>
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text style={styles.eyebrow}>A SMALL WIN, A LITTLE GROWTH</Text>
+              <Text style={styles.winTitle}>{win.title} grew a little.</Text>
+              <Text style={styles.hint}>
+                +1 completed day · {win.after}{" "}
+                {win.after === 1 ? "day" : "days"} of care. Your progress is
+                saved.
+              </Text>
+            </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Close garden details"
-              onPress={() => setDetails(false)}
-              style={styles.close}
+              accessibilityLabel="Keep growing"
+              onPress={c.dismissGardenWin}
+              style={styles.winDismiss}
             >
-              <X size={21} color={colors.green} />
+              <Check size={19} color={colors.green} />
+              <Text style={styles.winLink}>Keep growing</Text>
             </Pressable>
           </View>
-          <Text style={styles.hint}>
-            Each goal has its own plant. Completed days help it grow; missed
-            days never take growth away.
-          </Text>
-          <ScrollView
-            style={{ maxHeight: 340 }}
-            nestedScrollEnabled
-            contentContainerStyle={{ gap: 10 }}
-          >
-            {plants.map((p) => {
-              const due = dueOn(p.goal, now, c.data.profile.timezone);
-              const done = today.doneGoalIds.includes(p.goal.id);
-              return (
-                <View key={p.goal.id} style={styles.goal}>
-                  <View style={{ flex: 1, gap: 5 }}>
-                    <Text style={styles.goalTitle}>{p.goal.title}</Text>
-                    <Text style={styles.hint}>
-                      {KINDS[p.kind]} · {p.completions} completed{" "}
-                      {p.completions === 1 ? "day" : "days"}
-                    </Text>
-                    <Text style={styles.hint}>
-                      {GARDEN_STAGE_NAMES[p.stage]}
-                      {p.goal.status === "paused"
-                        ? " · Paused"
-                        : !due
-                          ? " · No step planned today"
-                          : ""}
-                    </Text>
+        )}
+        {details && !active && (
+          <View style={styles.details} accessibilityViewIsModal>
+            <View style={styles.detailHeading}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>
+                Your garden
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close garden details"
+                onPress={() => setDetails(false)}
+                style={styles.close}
+              >
+                <X size={21} color={colors.green} />
+              </Pressable>
+            </View>
+            <ScrollView
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.detailContent}
+            >
+              <Text style={styles.hint}>
+                Each goal has its own plant. Completed days help it grow; missed
+                days never take growth away.
+              </Text>
+              {plants.map((plant) => {
+                const due = dueOn(plant.goal, now, c.data.profile.timezone);
+                const done = today.doneGoalIds.includes(plant.goal.id);
+                return (
+                  <View key={plant.goal.id} style={styles.goal}>
+                    <View style={{ flex: 1, gap: 5 }}>
+                      <Text style={styles.goalTitle}>{plant.goal.title}</Text>
+                      <Text style={styles.hint}>
+                        {KINDS[plant.kind]} · {plant.completions} completed{" "}
+                        {plant.completions === 1 ? "day" : "days"}
+                      </Text>
+                      <Text style={styles.hint}>
+                        {GARDEN_STAGE_NAMES[plant.stage]}
+                        {plant.goal.status === "paused"
+                          ? " · Paused"
+                          : !due
+                            ? " · No step planned today"
+                            : ""}
+                      </Text>
+                    </View>
+                    {(due || done) && (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          done
+                            ? `Undo today for ${plant.goal.title}`
+                            : `Mark ${plant.goal.title} complete today`
+                        }
+                        disabled={c.busy}
+                        onPress={() => void complete(plant.goal)}
+                        style={[styles.complete, done && styles.completed]}
+                      >
+                        <Check
+                          size={22}
+                          color={done ? "#FFFFFF" : colors.green}
+                        />
+                      </Pressable>
+                    )}
                   </View>
-                  {(due || done) && (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        done
-                          ? `Undo today for ${p.goal.title}`
-                          : `Mark ${p.goal.title} complete today`
-                      }
-                      disabled={c.busy}
-                      onPress={() => void complete(p.goal)}
-                      style={[styles.complete, done && styles.completed]}
-                    >
-                      <Check
-                        size={22}
-                        color={done ? "#FFFFFF" : colors.green}
-                      />
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
-          {!plants.length && (
-            <Button title="Choose your first goal" onPress={onPlan} />
-          )}
-          <Text style={styles.hint}>
-            Sprout at 1 day · grow at 3 and 7 · flourish at 14. Your circle
-            starts fresh each day; your garden keeps growing.
-          </Text>
-          {notice ? (
-            <Text accessibilityRole="alert" style={styles.error}>
-              {notice}
-            </Text>
-          ) : null}
-        </View>
-      ) : (
-        <View style={styles.scene}>
-          <FloatingGarden compact={active} plants={visuals} win={win} />
-          {!active &&
-            visible.map(
-              (p, i) =>
-                p.stage > 0 && (
+                );
+              })}
+              {!plants.length && (
+                <Button title="Choose your first goal" onPress={onPlan} />
+              )}
+              <Text style={styles.hint}>
+                Sprout at 1 day · grow at 3 and 7 · flourish at 14. Your circle
+                starts fresh each day; your garden keeps growing.
+              </Text>
+              {!!notice && (
+                <Text accessibilityRole="alert" style={styles.error}>
+                  {notice}
+                </Text>
+              )}
+            </ScrollView>
+          </View>
+        )}
+        {!!conversationReview && !active && (
+          <View style={styles.reviewOverlay}>
+            <ScrollView
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {conversationReview}
+            </ScrollView>
+          </View>
+        )}
+        {previewing &&
+          !active &&
+          !selected &&
+          !details &&
+          !conversationReview && (
+            <View style={styles.previewPanel}>
+              <View style={styles.stages}>
+                {PREVIEWS.map((name, i) => (
                   <Pressable
-                    key={p.goal.id}
+                    key={name}
                     accessibilityRole="button"
-                    accessibilityLabel={`About ${p.goal.title}`}
-                    onPress={() => {
-                      if (!previewing) setDetails(true);
-                    }}
-                    style={[
-                      styles.plantTag,
-                      {
-                        left: `${(PLOTS[i]!.x / 520) * 100}%`,
-                        top: `${((PLOTS[i]!.y - 8) / 510) * 100}%`,
-                      },
-                    ]}
+                    accessibilityLabel={name}
+                    accessibilityState={{ selected: preview === i }}
+                    aria-pressed={preview === i}
+                    onPress={() => setPreview(i as GardenStage)}
+                    style={[styles.stage, preview === i && styles.chosen]}
                   >
-                    <Text numberOfLines={1} style={styles.tagText}>
-                      {p.goal.title}
+                    <Text
+                      style={[
+                        styles.stageNumber,
+                        preview === i && styles.selectedNumber,
+                      ]}
+                    >
+                      {i + 1}
                     </Text>
+                    <Text style={styles.stageLabel}>{name}</Text>
                   </Pressable>
-                ),
-            )}
-        </View>
-      )}
+                ))}
+              </View>
+              <Text
+                accessibilityLiveRegion="polite"
+                style={styles.previewCaption}
+              >
+                Preview: {previewDays} completed{" "}
+                {previewDays === 1 ? "day" : "days"}. Each new day adds growth.
+              </Text>
+              <View style={styles.previewActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Preview one more day"
+                  onPress={() => {
+                    const next = previewDays + 1;
+                    setPreviewDays(next);
+                    setPreviewStage(gardenStage(next));
+                  }}
+                  style={styles.previewAction}
+                >
+                  <Text style={styles.previewActionText}>+ One day</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Back to my garden"
+                  onPress={() => {
+                    setPreview(null);
+                    setPlotPage(0);
+                  }}
+                  style={styles.previewAction}
+                >
+                  <Text style={styles.previewActionText}>
+                    Back to my garden
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+      </View>
       {!active && pageCount > 1 && (
         <View style={styles.pageControls}>
           <Pressable
@@ -416,109 +555,47 @@ export function GardenHome({
           </Pressable>
         </View>
       )}
-      {children}
-      {!active &&
-        (previewing ? (
-          <View style={styles.previewPanel}>
-            <Text style={styles.eyebrow}>TRY THE GROWTH STAGES</Text>
-            <View style={styles.stages}>
-              {PREVIEWS.map((name, i) => (
-                <Pressable
-                  key={name}
-                  accessibilityRole="button"
-                  accessibilityLabel={name}
-                  accessibilityState={{ selected: preview === i }}
-                  aria-pressed={preview === i}
-                  onPress={() => setPreview(i as GardenStage)}
-                  style={[styles.stage, preview === i && styles.chosen]}
-                >
-                  <Text
-                    style={[
-                      styles.stageNumber,
-                      preview === i && { color: "#fff" },
-                    ]}
-                  >
-                    {i + 1}
-                  </Text>
-                  <Text style={styles.stageLabel}>{name}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Button
-              secondary
-              title="Preview one more day"
-              onPress={() => {
-                const next = previewDays + 1;
-                setPreviewDays(next);
-                setPreviewStage(gardenStage(next));
-              }}
-            />
-            <Text accessibilityLiveRegion="polite" style={styles.hint}>
-              Preview: {previewDays} completed{" "}
-              {previewDays === 1 ? "day" : "days"}. Each new day adds growth.
-            </Text>
-            <Text style={styles.hint}>
-              In your garden, each plant grows independently with its goal.
-            </Text>
-            <Button
-              secondary
-              title="Back to my garden"
-              onPress={() => {
-                setPreview(null);
-                setPlotPage(0);
-              }}
-            />
-          </View>
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Preview garden growth"
-            onPress={() => {
-              setPreview(0);
-              setDetails(false);
-              setPlotPage(0);
-            }}
-            style={styles.previewLink}
-          >
-            <FlaskConical size={14} color={colors.muted} />
-            <Text style={styles.previewText}>Preview garden growth</Text>
-          </Pressable>
-        ))}
+      {!active && !previewing && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Preview garden growth"
+          onPress={() => {
+            onShowForest?.();
+            setPreview(0);
+            setDetails(false);
+            setPlotPage(0);
+          }}
+          style={styles.previewLink}
+        >
+          <FlaskConical size={14} color={colors.muted} />
+          <Text style={styles.previewText}>Preview garden growth</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 const styles = StyleSheet.create({
-  winCard: {
+  wrap: { width: "100%", alignItems: "center" },
+  hero: {
     width: "100%",
-    backgroundColor: "#EDF0DE",
-    borderColor: "#D9E2C9",
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 16,
-    gap: 8,
-    marginTop: 14,
+    position: "relative",
+    overflow: "hidden",
+    backgroundColor: colors.background,
   },
-  winTitle: {
-    fontSize: 18,
-    lineHeight: 25,
-    fontWeight: "500",
-    color: colors.ink,
-  },
-  winDismiss: {
+  top: {
+    position: "absolute",
+    top: 12,
+    left: 24,
+    right: 24,
     flexDirection: "row",
     alignItems: "center",
-    gap: 7,
-    minHeight: 36,
-    alignSelf: "flex-start",
+    gap: 12,
   },
-  winLink: { color: colors.green, fontWeight: "600", fontSize: 12 },
-  wrap: { width: "100%", alignItems: "center" },
-  top: { width: "100%", flexDirection: "row", alignItems: "center", gap: 8 },
-  intro: { flex: 1, gap: 8 },
+  intro: { flex: 1, gap: 6 },
   eyebrow: {
-    fontSize: 9,
+    fontSize: 8,
     fontWeight: "600",
-    letterSpacing: 1.5,
+    letterSpacing: 1.6,
     color: colors.green,
   },
   title: {
@@ -529,54 +606,89 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   hint: { fontSize: 12, lineHeight: 19, color: colors.muted },
-  ring: { width: 84, height: 84 },
+  ring: { width: 76, height: 76, transform: [{ scale: 0.9 }] },
   ringText: {
     position: "absolute",
-    inset: 0,
+    width: 84,
+    height: 84,
+    top: 0,
+    left: 0,
     alignItems: "center",
     justifyContent: "center",
     gap: 1,
   },
   ratio: { fontSize: 23, fontWeight: "600", color: colors.green },
   ringLabel: { fontSize: 10, color: colors.muted },
-  scene: { width: "100%", marginTop: -12, marginBottom: 7 },
-  plantTag: {
+  bottomFade: {
     position: "absolute",
-    transform: [{ translateX: -39 }],
-    width: 78,
-    minHeight: 44,
-    justifyContent: "center",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 170,
+  },
+  controlsDock: {
+    position: "absolute",
+    left: 24,
+    right: 24,
+    bottom: 15,
     alignItems: "center",
   },
-  tagText: {
-    fontSize: 9,
-    fontWeight: "600",
-    color: "#4B573E",
-    backgroundColor: "#F2E5C8",
-    paddingVertical: 5,
-    paddingHorizontal: 6,
-    borderRadius: 3,
+  activeDock: { left: 28, right: 28, bottom: 28 },
+  winCard: {
+    position: "absolute",
+    top: 114,
+    left: 22,
+    right: 22,
+    backgroundColor: "rgba(246,249,235,0.96)",
     borderWidth: 1,
-    borderColor: "#D5C7A4",
-    maxWidth: 78,
-  },
-  details: {
-    width: "100%",
-    marginTop: 16,
-    marginBottom: 20,
-    padding: 18,
-    gap: 14,
+    borderColor: "#D9E2C9",
     borderRadius: 20,
-    backgroundColor: colors.card,
+    padding: 16,
+    gap: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    boxShadow: "0 7px 28px rgba(37,73,43,0.08)",
+  },
+  winTitle: {
+    fontSize: 18,
+    lineHeight: 25,
+    fontWeight: "500",
+    color: colors.ink,
+  },
+  winDismiss: {
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    minWidth: 64,
+    minHeight: 48,
+  },
+  winLink: { color: colors.green, fontWeight: "600", fontSize: 9 },
+  details: {
+    position: "absolute",
+    top: 110,
+    bottom: 178,
+    left: 20,
+    right: 20,
+    borderRadius: 24,
+    padding: 18,
+    backgroundColor: "rgba(255,254,251,0.98)",
     borderWidth: 1,
     borderColor: colors.line,
+    boxShadow: "0 14px 40px rgba(28,57,38,0.12)",
   },
   detailHeading: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 8,
   },
-  sectionTitle: { fontSize: 21, color: colors.ink, fontWeight: "500" },
+  detailContent: { gap: 12, paddingBottom: 10 },
+  sectionTitle: {
+    fontSize: 22,
+    color: colors.ink,
+    fontWeight: "500",
+    letterSpacing: -0.4,
+  },
   close: {
     width: 44,
     height: 44,
@@ -603,47 +715,81 @@ const styles = StyleSheet.create({
   },
   completed: { backgroundColor: colors.green, borderColor: colors.green },
   error: { color: colors.danger, fontSize: 13, lineHeight: 20 },
+  reviewOverlay: {
+    position: "absolute",
+    top: 110,
+    bottom: 178,
+    left: 20,
+    right: 20,
+  },
   pageControls: { flexDirection: "row", alignItems: "center", gap: 8 },
   previewLink: {
     minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginTop: 8,
+    marginTop: 2,
   },
   previewText: { fontSize: 11, color: colors.muted },
   previewPanel: {
-    width: "100%",
-    padding: 17,
-    borderRadius: 18,
-    backgroundColor: "#EDEEE2",
-    gap: 14,
-    marginTop: 16,
+    position: "absolute",
+    left: 18,
+    right: 18,
+    bottom: 166,
+    padding: 13,
+    borderRadius: 22,
+    backgroundColor: "rgba(248,250,240,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(216,226,207,0.9)",
+    gap: 8,
   },
-  stages: { flexDirection: "row", gap: 4, justifyContent: "space-between" },
+  stages: { flexDirection: "row", gap: 3, justifyContent: "space-between" },
   stage: {
-    alignItems: "center",
     flex: 1,
-    minHeight: 68,
-    paddingTop: 7,
-    gap: 7,
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
     borderRadius: 12,
+    paddingVertical: 5,
   },
-  chosen: { backgroundColor: "#DCE5D4" },
+  chosen: { backgroundColor: "#E1E9D8" },
   stageNumber: {
-    backgroundColor: "#BECAB2",
     color: colors.green,
-    borderRadius: 13,
-    width: 26,
-    height: 26,
+    borderRadius: 11,
+    width: 22,
+    height: 22,
     textAlign: "center",
-    lineHeight: 26,
+    lineHeight: 22,
     fontWeight: "600",
+    backgroundColor: "#E8EDDF",
+    fontSize: 11,
   },
+  selectedNumber: { backgroundColor: colors.green, color: "#FFFFFF" },
   stageLabel: {
-    fontSize: 10,
+    fontSize: 9,
     textAlign: "center",
     color: colors.green,
-    lineHeight: 14,
+    lineHeight: 12,
   },
+  previewCaption: {
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: "center",
+    color: colors.muted,
+  },
+  previewActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  previewAction: {
+    minHeight: 38,
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 12,
+    backgroundColor: "#E6ECDE",
+  },
+  previewActionText: { fontSize: 11, fontWeight: "500", color: colors.green },
 });
