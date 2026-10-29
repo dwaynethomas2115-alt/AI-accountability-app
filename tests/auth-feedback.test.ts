@@ -4,6 +4,7 @@ import {
   authFeedback,
   authRedirectUrl,
   callbackFeedback,
+  passwordResetFeedback,
   resendSecondsRemaining,
 } from "../src/lib/auth-feedback.ts";
 
@@ -85,4 +86,63 @@ test("sign-in rate limits do not incorrectly claim an email was sent", () => {
   assert.equal(feedback.rateLimited, true);
   assert.match(feedback.message, /too many attempts/i);
   assert.doesNotMatch(feedback.message, /email|send/i);
+});
+
+test("expired reset sessions request a fresh reset rather than signup confirmation", () => {
+  for (const error of [
+    { code: "otp_expired" },
+    { code: "session_not_found" },
+    { code: "refresh_token_already_used" },
+    { code: "bad_jwt" },
+    { status: 401 },
+    { status: 403 },
+  ]) {
+    const feedback = passwordResetFeedback({
+      ...error,
+      message: "private-provider-details",
+    });
+    assert.equal(feedback.kind, "error");
+    assert.equal(feedback.needsReset, true);
+    assert.notEqual(feedback.needsConfirmation, true);
+    assert.match(feedback.message, /fresh password-reset email/);
+    assert.doesNotMatch(
+      feedback.message,
+      /confirm your email|private-provider-details/i,
+    );
+  }
+});
+
+test("password reset failures explain password corrections and temporary delivery limits", () => {
+  assert.match(
+    passwordResetFeedback({ code: "same_password" }).message,
+    /different from your previous/,
+  );
+  assert.match(
+    passwordResetFeedback({ code: "weak_password" }).message,
+    /stronger password/,
+  );
+  for (const code of [
+    "over_email_send_rate_limit",
+    "over_request_rate_limit",
+  ]) {
+    const feedback = passwordResetFeedback({ code, status: 429 });
+    assert.equal(feedback.rateLimited, true);
+    assert.match(feedback.message, /temporarily limited/);
+    assert.doesNotMatch(
+      feedback.message,
+      /we’ve sent|we sent|create this account|confirmed your email/i,
+    );
+  }
+  const unauthorized = passwordResetFeedback({
+    code: "email_address_not_authorized",
+  });
+  assert.match(unauthorized.message, /Password-reset emails/);
+  assert.doesNotMatch(
+    unauthorized.message,
+    /create this account|confirmation email/i,
+  );
+  assert.match(
+    passwordResetFeedback(new Error("Failed to fetch")).message,
+    /couldn’t connect/,
+  );
 });

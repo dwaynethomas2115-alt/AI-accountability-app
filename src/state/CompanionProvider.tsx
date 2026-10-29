@@ -9,7 +9,15 @@ import { randomUUID } from "expo-crypto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
 import type { Session } from "@supabase/supabase-js";
-import { supabase, startNativeAuthListener } from "../lib/supabase";
+import {
+  supabase,
+  startNativeAuthListener,
+  initialPasswordRecovery,
+  matchesInitialRecoverySession,
+  rememberPasswordRecovery,
+  clearRecoveryCallback,
+  clearPasswordRecovery,
+} from "../lib/supabase";
 import {
   emptySnapshot,
   localDate,
@@ -52,6 +60,10 @@ export type GardenWin = {
 type Actions = {
   data: Snapshot;
   loading: boolean;
+  authLoading: boolean;
+  passwordRecovery: boolean;
+  recoveryReady: boolean;
+  finishPasswordRecovery: () => void;
   busy: boolean;
   demo: boolean;
   session: Session | null;
@@ -92,6 +104,13 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
   );
   const [demo, setDemo] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(
+    initialPasswordRecovery.requested,
+  );
+  const [recoveryOwner, setRecoveryOwner] = useState(
+    initialPasswordRecovery.owner,
+  );
+  const [nativeRecoveryPending, setNativeRecoveryPending] = useState(false);
   const [authLoading, setAuthLoading] = useState(Boolean(supabase));
   const [dataLoading, setDataLoading] = useState(false);
   const [demoLoading, setDemoLoading] = useState(false);
@@ -103,6 +122,30 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
   const refreshCount = useRef(0);
   const sessionRef = useRef<Session | null>(null);
   const demoRef = useRef(false);
+  const recoveryOwnerRef = useRef(recoveryOwner);
+  const recoveringRef = useRef(passwordRecovery);
+  function finishPasswordRecovery() {
+    recoveringRef.current = false;
+    recoveryOwnerRef.current = null;
+    setPasswordRecovery(false);
+    setRecoveryOwner(null);
+    setNativeRecoveryPending(false);
+    clearPasswordRecovery();
+    setError("");
+  }
+  function startPasswordRecovery(owner: string | null, pending = false) {
+    recoveringRef.current = true;
+    recoveryOwnerRef.current = owner;
+    setPasswordRecovery(true);
+    setRecoveryOwner(owner);
+    setNativeRecoveryPending(pending);
+    rememberPasswordRecovery(owner);
+    if (demoRef.current) {
+      demoRef.current = false;
+      setDemo(false);
+      setDemoLoading(false);
+    }
+  }
   // Actions retained by an open conversation must never move into another account.
   const actionScope = scope.current;
   function assertActiveScope() {
@@ -143,8 +186,22 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       setSession(next);
     };
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, next) => {
+      (event, next) => {
         authEventSeen = true;
+        if (event === "PASSWORD_RECOVERY" && next) {
+          startPasswordRecovery(next.user.id);
+          clearRecoveryCallback();
+        } else if (event === "SIGNED_OUT" && recoveringRef.current) {
+          finishPasswordRecovery();
+        } else if (matchesInitialRecoverySession(next)) {
+          startPasswordRecovery(next!.user.id);
+          clearRecoveryCallback();
+        } else if (
+          recoveryOwnerRef.current &&
+          recoveryOwnerRef.current !== next?.user.id
+        ) {
+          startPasswordRecovery(null);
+        }
         acceptSession(next);
       },
     );
@@ -153,6 +210,8 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       .then(({ data, error }) => {
         if (authEventSeen) return;
         if (error) throw error;
+        if (matchesInitialRecoverySession(data.session))
+          startPasswordRecovery(data.session!.user.id);
         acceptSession(data.session);
       })
       .catch(() => {
@@ -160,16 +219,29 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
           setError("Your sign-in could not be restored. Please sign in again.");
       })
       .finally(() => {
-        if (mounted) setAuthLoading(false);
+        if (mounted) {
+          if (recoveringRef.current) {
+            rememberPasswordRecovery(recoveryOwnerRef.current);
+            clearRecoveryCallback();
+          }
+          setAuthLoading(false);
+        }
       });
     const sub = AppState.addEventListener("change", (state) =>
       state === "active"
         ? supabase!.auth.startAutoRefresh()
         : supabase!.auth.stopAutoRefresh(),
     );
-    const stopNative = startNativeAuthListener((message) => {
-      if (mounted) setError(message);
-    });
+    const stopNative = startNativeAuthListener(
+      (message) => {
+        if (mounted) setError(message);
+      },
+      (next, pending) => {
+        if (!mounted) return;
+        startPasswordRecovery(next?.user.id ?? null, pending);
+        if (next && !pending) acceptSession(next);
+      },
+    );
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
@@ -259,7 +331,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     );
   }
   useEffect(() => {
-    if (!session || demo) {
+    if (!session || demo || passwordRecovery) {
       setDataLoading(false);
       return;
     }
@@ -276,7 +348,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, [session?.user.id, demo]);
+  }, [session?.user.id, demo, passwordRecovery]);
   useEffect(() => {
     if (!demo || loading) return;
     const version = scope.current;
@@ -434,6 +506,15 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
   const actions: Actions = {
     data,
     loading,
+    authLoading: authLoading || nativeRecoveryPending,
+    passwordRecovery,
+    recoveryReady:
+      passwordRecovery &&
+      !authLoading &&
+      !nativeRecoveryPending &&
+      !!session &&
+      recoveryOwner === session.user.id,
+    finishPasswordRecovery,
     busy,
     demo,
     session,

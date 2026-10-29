@@ -17,7 +17,7 @@ supabase functions deploy dispatch-reminders
 
 The checked-in `supabase/config.toml` disables gateway JWT verification for these functions. This is intentional: `chat` and `voice-session` verify the user token with `auth.getUser`; the reminder endpoint accepts only a separate worker secret. Do not remove those checks. Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions automatically.
 
-In Supabase Auth enable email/password signup and configure the Site URL, email templates and allowed redirect URLs for your deployment. Signup explains email confirmation and supplies the current website origin as the return URL (or `kindred://auth` on native). Allowlist the deployed URL and native scheme in Supabase; an already-expired link cannot be repaired by the app. A valid confirmation callback can establish the session; otherwise users can sign in with their password. Use a strong password (UI requires at least 8 characters). Password reset, account deletion, export and production abuse controls are release follow-ups.
+In Supabase Auth enable email/password signup and configure the Site URL, email templates and allowed redirect URLs for your deployment. Signup explains email confirmation and supplies the current website origin as the return URL (or `kindred://auth` on native). Allowlist the deployed URL and native scheme in Supabase; an already-expired link cannot be repaired by the app. A valid confirmation callback can establish the session; otherwise users can sign in with their password. Use a strong password (UI requires at least 8 characters). Account deletion, export and production abuse controls are release follow-ups.
 
 Create `.env` from `.env.example`:
 
@@ -26,6 +26,14 @@ Create `.env` from `.env.example`:
 - `EXPO_PUBLIC_EAS_PROJECT_ID`: the EAS project UUID, needed only for push registration.
 
 For EAS cloud builds, add the same public variables to the selected EAS environment in the Expo dashboard; the ignored local `.env` is not a reliable source for a remote build. Restart Expo after changing public variables. Public variables are embedded in the app and are not secrets. RLS protects user data; the public key is not an authorization boundary.
+
+### Password recovery
+
+The sign-in screen includes **Forgot your password?**. It requests a Supabase reset email with an explicit return URL for this website, such as `https://pokemedoit.vercel.app/?reset=password`. Add that URL to Supabase Auth’s allowed Redirect URLs alongside the normal confirmation URL. Native builds use `kindred://auth?reset=password`; allowlist that URL too. The recovery screen requires a verified recovery session before accepting a new password. Invalid or used links offer a fresh reset email; the form checks password length and confirmation, and reports success only after Supabase saves the change.
+
+A Supabase project has one default Site URL. If multiple websites share a project, leave that default as required by the other app and allowlist Kindred’s return URLs. Request resets from Kindred’s **Forgot your password?** flow; dashboard-generated reset emails can use the project default instead. A custom recovery email template must use Supabase’s generated `{{ .ConfirmationURL }}` verification link rather than a hard-coded website link. Sharing a Supabase project also shares its authentication accounts: separate projects are needed for fully separate accounts and passwords.
+
+After deploying, request a **new** email from Kindred and open its newest link in a browser. Old emails still point to their original destinations and can expire or be consumed by email scanners. Verify an actual inbox round trip; automated tests mock email delivery. Native links require an installed development or production build and device testing.
 
 ## 2. OpenAI (server only)
 

@@ -157,6 +157,61 @@ export function callbackFeedback(href?: string): AuthFeedback | null {
 }
 
 export const RESEND_COOLDOWN_SECONDS = 60;
+
+/** Recovery has different next steps from signup confirmation. */
+export function passwordResetFeedback(
+  error: unknown,
+): AuthFeedback & { needsReset?: boolean } {
+  const detail = (error ?? {}) as AuthErrorLike;
+  const code = detail.code ?? "";
+  if (code === "email_address_not_authorized")
+    return {
+      kind: "error",
+      message:
+        "Password-reset emails aren’t available for this address yet. The app’s email service needs to be configured.",
+    };
+  if (
+    [
+      "session_not_found",
+      "session_expired",
+      "refresh_token_not_found",
+      "refresh_token_already_used",
+      "bad_jwt",
+      "otp_expired",
+    ].includes(code) ||
+    detail.message?.toLowerCase().includes("auth session missing") ||
+    detail.status === 401 ||
+    detail.status === 403
+  ) {
+    return {
+      kind: "error",
+      needsReset: true,
+      message:
+        "Your reset link is no longer valid. Request a fresh password-reset email and use the newest link.",
+    };
+  }
+  if (code === "same_password")
+    return {
+      kind: "error",
+      message: "Choose a new password different from your previous one.",
+    };
+  const feedback = authFeedback(error);
+  if (feedback.rateLimited)
+    return {
+      ...feedback,
+      message:
+        "Password reset is temporarily limited. Please wait before trying again. Email limits may take longer than a minute to reset.",
+    };
+  if (feedback.needsConfirmation)
+    return {
+      kind: "error",
+      needsReset: true,
+      message:
+        "That reset link couldn’t be used. Request a fresh password-reset email.",
+    };
+  return feedback;
+}
+
 export function resendSecondsRemaining(availableAt: number, now: number) {
   return Math.max(0, Math.ceil((availableAt - now) / 1000));
 }

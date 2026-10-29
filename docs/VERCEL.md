@@ -6,14 +6,15 @@ Vercel hosts the Expo web app. Supabase continues to run authentication, Postgre
 2. Use the repository root. Framework preset: **Other**. The checked-in `vercel.json` sets install command `npm ci`, build command `npm run build:vercel`, and output directory `dist`. Choose **Node.js 24.x** in Vercel's project settings.
 3. Under Environment Variables, add these for Production and Preview:
 
-   | Name | Value |
-   | --- | --- |
-   | `EXPO_PUBLIC_SUPABASE_URL` | `https://xkxbvanspfaxxggqhteu.supabase.co` |
+   | Name                            | Value                                                                      |
+   | ------------------------------- | -------------------------------------------------------------------------- |
+   | `EXPO_PUBLIC_SUPABASE_URL`      | `https://xkxbvanspfaxxggqhteu.supabase.co`                                 |
    | `EXPO_PUBLIC_SUPABASE_ANON_KEY` | The Supabase project's public `sb_publishable_…` key supplied during setup |
 
    Do not add `OPENAI_API_KEY` or `SUPABASE_SERVICE_ROLE_KEY` to the web project. `EXPO_PUBLIC_EAS_PROJECT_ID` is only needed for native push; web push is not implemented.
+
 4. Click **Deploy**. The build refuses missing public Supabase settings, so a production deployment cannot silently use demo mode. Public variables are embedded in the browser bundle; they are not secrets.
-5. In Supabase → Authentication → URL Configuration, set **Site URL** to the Vercel production HTTPS URL. Add exact allowed redirect URLs for environments you use. The current app uses email/password authentication and a confirmation email followed by returning to sign in.
+5. In Supabase → Authentication → URL Configuration, add the production confirmation URL (`https://pokemedoit.vercel.app/`) and reset URL (`https://pokemedoit.vercel.app/?reset=password`) to **Redirect URLs**. Set **Site URL** to your production URL if this project belongs only to Kindred; if another website shares the project, its default can stay in place. Kindred supplies an explicit return URL for confirmation and password-reset emails. Request resets through **Forgot your password?** in Kindred, then use the newest email. See [password recovery](DEPLOYMENT.md#password-recovery).
 
 After connecting Vercel to the repository, pushes to `main` automatically build production deployments. Pull requests can create preview deployments. Environment-variable changes require a new deployment because Expo embeds values during build.
 

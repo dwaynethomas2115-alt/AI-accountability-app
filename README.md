@@ -16,6 +16,7 @@ Use Node 24.19 (see `.nvmrc`). Expo SDK 58. Copy `.env.example` to `.env` and fo
 
 ## The simple experience
 
+- Email/password sign-in includes **Forgot your password?**. Reset emails return to this app, explain the next step, and open a verified recovery form with password confirmation. Expired links offer a fresh email; see [password recovery](docs/DEPLOYMENT.md#password-recovery).
 - A continuous garden forest grows upward from the bottom of the screen, with planted beds, soft light and water blending into a calm header. Talk, text and the next check-in sit above the garden. Each goal owns a flower or tree that grows from its first sprout with completed days, with new stages at 1, 3, 7 and 14 days. Care across all goals also fills in the surrounding forest. Each newly saved accomplishment shows its growth and a celebration. Paused goals and missed days keep earned growth; reduced-motion settings are respected.
 - Goal labels stay hidden until you tap a plant. A small garden sign set beside its roots reveals the goal and completed days; tapping the sign tucks it away.
 - After a voice conversation or a successful text message, users can confirm a completed goal and return to their growing garden. Recording the same goal again today never adds duplicate progress. Conversations alone do not award completions.

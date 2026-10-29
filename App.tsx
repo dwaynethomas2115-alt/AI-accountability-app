@@ -15,6 +15,8 @@ import { ArrowLeft, SlidersHorizontal, Sprout, X } from "lucide-react-native";
 import { CompanionProvider, useCompanion } from "./src/state/CompanionProvider";
 import { useVoiceConversation } from "./src/hooks/useVoiceConversation";
 import { Auth } from "./src/screens/Auth";
+import { PasswordRecovery } from "./src/screens/PasswordRecovery";
+import { supabase } from "./src/lib/supabase";
 import { PlanScreen } from "./src/screens/Plan";
 import { TalkScreen } from "./src/screens/Talk";
 import { PrivacyScreen } from "./src/screens/Privacy";
@@ -24,11 +26,12 @@ import { colors } from "./src/components/ui";
 type Screen = "home" | "talk" | "plan" | "messages" | "privacy" | "calendar";
 function Shell() {
   const c = useCompanion();
+  const recovering = c.passwordRecovery;
   const [screen, setScreen] = useState<Screen>("home");
   const contentScroll = useRef<React.ElementRef<typeof ScrollView>>(null);
-  const signed = c.demo || !!c.session;
+  const signed = !recovering && (c.demo || !!c.session);
   const voice = useVoiceConversation({
-    enabled: !!c.session && !c.demo,
+    enabled: !!c.session && !c.demo && !recovering,
     accountId: c.session?.user.id ?? null,
     onPlanConfirmed: async (plan) => {
       await c.savePlan({ ...plan, timezone: c.data.profile.timezone });
@@ -79,7 +82,20 @@ function Shell() {
       remove?.();
     };
   }, []);
-  const content = !signed ? (
+  const content = recovering ? (
+    <PasswordRecovery
+      key={c.session?.user.id ?? "expired"}
+      validSession={c.recoveryReady}
+      onDone={c.finishPasswordRecovery}
+      onCancel={async () => {
+        if (supabase) {
+          const { error } = await supabase.auth.signOut({ scope: "local" });
+          if (error) throw error;
+        }
+        c.finishPasswordRecovery();
+      }}
+    />
+  ) : !signed ? (
     <Auth />
   ) : current === "plan" ? (
     <PlanScreen
@@ -170,7 +186,7 @@ function Shell() {
             </Pressable>
           </View>
         )}
-        {c.loading ? (
+        {(recovering ? c.authLoading : c.loading) ? (
           <ActivityIndicator
             accessibilityLabel="Loading your space"
             style={styles.fill}

@@ -10,6 +10,7 @@ import {
   s,
 } from "../components/ui";
 import { useCompanion } from "../state/CompanionProvider";
+import { ResetPasswordRequest } from "./PasswordRecovery";
 import {
   authFeedback,
   RESEND_COOLDOWN_SECONDS,
@@ -27,6 +28,7 @@ type Mode = "signin" | "signup" | "confirm";
 
 export function Auth() {
   const c = useCompanion();
+  const [forgot, setForgot] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<Mode>(
@@ -134,6 +136,16 @@ export function Auth() {
     }
   }
 
+  if (forgot)
+    return (
+      <ResetPasswordRequest
+        initialEmail={email}
+        onBack={() => {
+          setForgot(false);
+          changeMode("signin");
+        }}
+      />
+    );
   return (
     <View style={styles.page}>
       <View style={styles.intro}>
@@ -270,6 +282,16 @@ export function Auth() {
           </>
         )}
       </Card>
+      {supabase && mode !== "signup" && (
+        <TextLink
+          label="Forgot your password?"
+          disabled={busy}
+          onPress={() => {
+            setPassword("");
+            setForgot(true);
+          }}
+        />
+      )}
       {mode !== "confirm" && (
         <TextLink
           label="Explore the local demo"
